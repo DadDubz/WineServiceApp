@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vineyard - Restaurant Service Management</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;background:#f8f7f4}
+.tab-active{border-bottom:2px solid #7f1d1d;color:#7f1d1d}
+</style>
+</head>
+<body>
+<div id="login" class="p-4">
+  <h1 class="text-3xl mb-4">Vineyard</h1>
+  <label>Username <input id="user" class="border"/></label>
+  <label>Password <input id="pass" type="password" class="border"/></label>
+  <select id="role" class="border mt-2">
+    <option value="server">Server</option>
+    <option value="expo">Expeditor</option>
+    <option value="head-sommelier">Head Sommelier</option>
+    <option value="manager">Manager</option>
+  </select>
+  <button id="login-btn" class="bg-red-800 text-white px-4 py-2 mt-2">Login</button>
+</div>
+
+<div id="app" class="hidden">
+  <div class="border-b mb-4">
+    <button class="tab-btn tab-active px-2" data-tab="service">Service</button>
+    <button class="tab-btn px-2" data-tab="inventory">Inventory</button>
+    <button class="tab-btn px-2" data-tab="reports">Reports</button>
+  </div>
+  <div id="service-tab" class="tab-content">Service content</div>
+  <div id="inventory-tab" class="tab-content hidden">Inventory content</div>
+  <div id="reports-tab" class="tab-content hidden">Reports content</div>
+</div>
+<script>
+const login=document.getElementById('login');
+const app=document.getElementById('app');
+const tabButtons=document.querySelectorAll('.tab-btn');
+const tabContents=document.querySelectorAll('.tab-content');
+
+// simple login
+document.getElementById('login-btn').addEventListener('click',()=>{
+  login.classList.add('hidden');
+  app.classList.remove('hidden');
+});
+
+// tab navigation
+tabButtons.forEach(btn=>btn.addEventListener('click',()=>{
+  const tab=btn.dataset.tab;
+  tabButtons.forEach(b=>b.classList.remove('tab-active'));
+  btn.classList.add('tab-active');
+  tabContents.forEach(c=>c.classList.add('hidden'));
+  document.getElementById(tab+'-tab').classList.remove('hidden');
+}));
+</script>
+</body>
+</html>
