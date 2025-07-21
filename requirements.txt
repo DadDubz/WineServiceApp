@@ -13,7 +13,6 @@ colorama==0.4.6
 distro==1.9.0
 ecdsa==0.19.1
 fastapi==0.116.1
-Flask @ file:///C:/Users/jwhof/Downloads/flask-3.0.3-py3-none-any.whl#sha256=34e815dfaa43340d1d15a5c3a02b8476004037eb4840b34910c6e21679d288f3
 google-api-core==2.19.1
 google-api-python-client==2.139.0
 google-auth==2.32.0
