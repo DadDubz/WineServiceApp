@@ -65,7 +65,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f8f7f4}
     </div>
 
     <!-- Main App -->
-    <div id="app" class="hidden min-h-screen flex flex-col">
+    <div id="app" class="hidden min-h-screen flex-col">
         <header class="bg-white shadow">
             <div class="container mx-auto px-4 py-3 flex justify-between">
                 <div>
@@ -105,7 +105,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f8f7f4}
     </div>
 
     <!-- Add Table Modal -->
-    <div id="table-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+    <div id="table-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 items-center justify-center">
         <div class="bg-white rounded shadow p-6 w-full max-w-md">
             <h4 class="text-lg font-semibold mb-4">Add Table</h4>
             <div class="mb-3">
@@ -128,7 +128,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f8f7f4}
     </div>
 
     <!-- Update Stock Modal -->
-    <div id="stock-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+    <div id="stock-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 items-center justify-center">
         <div class="bg-white rounded shadow p-6 w-full max-w-md">
             <h4 class="text-lg font-semibold mb-4">Update Stock</h4>
             <input type="hidden" id="stock-id" />
@@ -183,6 +183,7 @@ byId('login-btn').addEventListener('click', () => {
     byId('current-role').textContent = byId('login-role').value;
     byId('login-screen').classList.add('hidden');
     byId('app').classList.remove('hidden');
+    byId('app').classList.add('flex');
     renderTables();
     renderInventory();
 });
@@ -206,9 +207,11 @@ byId('open-add-table').addEventListener('click', () => {
     byId('table-server').value = '';
     byId('table-guests').value = '';
     byId('table-modal').classList.remove('hidden');
+    byId('table-modal').classList.add('flex');
 });
 byId('cancel-table').addEventListener('click', () => {
     byId('table-modal').classList.add('hidden');
+    byId('table-modal').classList.remove('flex');
 });
 byId('save-table').addEventListener('click', () => {
     const number = byId('table-number').value;
@@ -259,10 +262,15 @@ function openStockModal(id){
     byId('stock-name').textContent = `${wine.name} (${wine.vintage})`;
     byId('stock-amount').value = '';
     byId('stock-modal').classList.remove('hidden');
+    byId('stock-modal').classList.add('flex');
 }
+
+// Add event listeners for stock modal outside the function
 byId('cancel-stock').addEventListener('click', () => {
     byId('stock-modal').classList.add('hidden');
+    byId('stock-modal').classList.remove('flex');
 });
+
 byId('save-stock').addEventListener('click', () => {
     const id = parseInt(byId('stock-id').value, 10);
     const amount = parseInt(byId('stock-amount').value, 10);
@@ -270,6 +278,7 @@ byId('save-stock').addEventListener('click', () => {
     const wine = wines.find(w => w.id === id);
     wine.stock += amount;
     byId('stock-modal').classList.add('hidden');
+    byId('stock-modal').classList.remove('flex');
     renderInventory();
 });
 </script>
