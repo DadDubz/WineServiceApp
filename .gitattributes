@@ -1,7 +1,7 @@
-# Enforce LF line endings for all text files
+# Enforce LF line endings for all files
 * text=auto eol=lf
 
-# Specific file types (optional overrides)
+# Explicitly specify common source files
 *.js text eol=lf
 *.jsx text eol=lf
 *.ts text eol=lf
@@ -11,11 +11,4 @@
 *.css text eol=lf
 *.json text eol=lf
 *.md text eol=lf
-
-# Binary files (no line-ending normalization)
-*.png binary
-*.jpg binary
-*.jpeg binary
-*.gif binary
-*.woff binary
-*.woff2 binary
+*.sh text eol=lf
