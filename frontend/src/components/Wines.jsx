@@ -1,4 +1,4 @@
-import AddWineForm from "../components/AddWineForm";
+import AddWineForm from "./AddWineForm";
 import React, { useState } from "react";
 
 const Wines = () => {
