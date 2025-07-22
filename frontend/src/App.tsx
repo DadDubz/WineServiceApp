@@ -1,0 +1,21 @@
+// src/App.tsx
+import { Routes, Route, Navigate } from 'react-router-dom';
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+
+export default function App() {
+  const isAuthenticated = true; // Replace with real auth logic
+
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/dashboard"
+        element={
+          isAuthenticated ? <DashboardPage /> : <Navigate to="/login" />
+        }
+      />
+      {/* Add other protected routes here */}
+    </Routes>
+  );
+}
