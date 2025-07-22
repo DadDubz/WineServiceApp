@@ -1,4 +1,7 @@
+from pydantic import BaseModel
 from typing import List, Optional
+
+# ---------- Wine Schemas ----------
 
 class WineCreate(BaseModel):
     name: str
@@ -11,8 +14,11 @@ class WineCreate(BaseModel):
 
 class WineOut(WineCreate):
     id: int
+
     class Config:
         orm_mode = True
+
+# ---------- Table Schemas ----------
 
 class TableCreate(BaseModel):
     number: int
@@ -32,3 +38,6 @@ class TableOut(BaseModel):
     guests: int
     status: str
     courses: List[Course]
+
+    class Config:
+        orm_mode = True
