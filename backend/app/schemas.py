@@ -41,3 +41,9 @@ class TableOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+# ---------- Auth Token Schema ----------
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
