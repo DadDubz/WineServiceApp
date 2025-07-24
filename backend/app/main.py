@@ -5,8 +5,10 @@ from app.routes import auth as auth_routes
 from app.routes import wines, tables
 from app.models import Base  # <-- Add this
 from app.db import engine    # <-- And this
+from app.routes import service  # ✅ import the route module
 
 app = FastAPI()
+app.include_router(service.router)  # ✅ register the router
 
 # Ensure tables are created
 Base.metadata.create_all(bind=engine)  # <-- This creates app.db if not exists
