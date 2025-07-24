@@ -1,6 +1,9 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from app.db import Base
+from datetime import datetime
+
+
 
 class User(Base):
     __tablename__ = "users"
@@ -28,3 +31,14 @@ class Table(Base):
     guests = Column(Integer)
     status = Column(String)  # Seated, Finished
     courses_json = Column(String)  # JSON string of course objects
+
+class Service(Base):
+    __tablename__ = "service"
+
+    id = Column(Integer, primary_key=True, index=True)
+    wine_name = Column(String, nullable=False)
+    table_number = Column(Integer, nullable=False)
+    served_by = Column(String, nullable=False)
+    quantity = Column(Integer, nullable=False)
+    notes = Column(String, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)

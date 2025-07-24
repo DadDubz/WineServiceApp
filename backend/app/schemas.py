@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional
+from datetime import datetime
 
 # ---------- Auth Schemas ----------
 
@@ -61,6 +62,20 @@ class TableOut(BaseModel):
     guests: int
     status: str
     courses: List[Course]
+
+    class Config:
+        orm_mode = True
+
+class ServiceCreate(BaseModel):
+    wine_name: str
+    table_number: int
+    quantity: int
+    notes: Optional[str] = None
+
+class ServiceOut(ServiceCreate):
+    id: int
+    served_by: str
+    timestamp: datetime
 
     class Config:
         orm_mode = True

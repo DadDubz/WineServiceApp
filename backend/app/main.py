@@ -6,6 +6,7 @@ from app.routes import wines, tables
 from app.models import Base  # <-- Add this
 from app.db import engine    # <-- And this
 from app.routes import service  # ✅ import the route module
+from app.routes import service
 
 app = FastAPI()
 app.include_router(service.router)  # ✅ register the router
