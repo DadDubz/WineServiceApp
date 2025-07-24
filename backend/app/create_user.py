@@ -8,7 +8,7 @@ def create_user():
     db = SessionLocal()
 
     username = "admin"
-    password = "password123"  # Replace with your own
+    password = "admin123"  # Replace with your own
 
     existing = db.query(User).filter(User.username == username).first()
     if existing:
