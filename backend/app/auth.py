@@ -10,7 +10,8 @@ from app.db import SessionLocal
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
-# DB Dependency
+# ---------- Database Dependency ----------
+
 def get_db():
     db = SessionLocal()
     try:
@@ -18,7 +19,8 @@ def get_db():
     finally:
         db.close()
 
-# Get Current User
+# ---------- Current User Dependency ----------
+
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     data = auth_utils.decode_token(token)
     if not data:
@@ -28,16 +30,18 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-# Login Route
+# ---------- Login Route ----------
+
 @router.post("/auth/login", response_model=schemas.TokenResponse)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == form_data.username).first()
     if not user or not auth_utils.verify_password(form_data.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
-    token = auth_utils.create_access_token({"sub": user.username, "role": user.role})
+    token = auth_utils.create_access_token({"sub": user.username})
     return {"access_token": token, "token_type": "bearer"}
 
-# Get User Info
+# ---------- Authenticated User Route ----------
+
 @router.get("/auth/me", response_model=schemas.UserOut)
 def read_users_me(current_user: models.User = Depends(get_current_user)):
-    return {"username": current_user.username, "role": current_user.role}
+    return current_user

@@ -4,6 +4,7 @@ from app.db import SessionLocal
 from app.models import User
 from app.auth_utils import get_password_hash
 
+
 def create_user():
     db = SessionLocal()
 
