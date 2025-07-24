@@ -1,32 +1,43 @@
-# backend/app/auth.py
+# app/auth.py
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from jose import JWTError, jwt
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 
-from app import models, database
-from app.auth_utils import decode_token
+from app import schemas, models, auth_utils
+from app.db import SessionLocal
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+router = APIRouter()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+# DB Dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-    payload = decode_token(token)
-    if payload is None:
-        raise credentials_exception
-
-    username: str = payload.get("sub")
-    if username is None:
-        raise credentials_exception
-
-    user = db.query(models.User).filter(models.User.username == username).first()
-    if user is None:
-        raise credentials_exception
-
+# Get Current User
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    data = auth_utils.decode_token(token)
+    if not data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    user = db.query(models.User).filter(models.User.username == data["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     return user
+
+# Login Route
+@router.post("/auth/login", response_model=schemas.TokenResponse)
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.username == form_data.username).first()
+    if not user or not auth_utils.verify_password(form_data.password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    token = auth_utils.create_access_token({"sub": user.username, "role": user.role})
+    return {"access_token": token, "token_type": "bearer"}
+
+# Get User Info
+@router.get("/auth/me", response_model=schemas.UserOut)
+def read_users_me(current_user: models.User = Depends(get_current_user)):
+    return {"username": current_user.username, "role": current_user.role}
