@@ -1,6 +1,29 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
+# ---------- Auth Schemas ----------
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: Optional[str] = "expo"
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    role: str
+
+    class Config:
+        orm_mode = True
+
 # ---------- Wine Schemas ----------
 
 class WineCreate(BaseModel):
@@ -41,9 +64,3 @@ class TableOut(BaseModel):
 
     class Config:
         orm_mode = True
-
-# ---------- Auth Token Schema ----------
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
