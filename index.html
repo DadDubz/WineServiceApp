@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vineyard - Restaurant Service Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Raleway:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Raleway', sans-serif; background-color: #f8f7f4; }
+        h1, h2, h3, h4 { font-family: 'Playfair Display', serif; }
+        .tab-active { border-bottom: 2px solid #7f1d1d; color: #7f1d1d; }
+        .modal { transition: opacity 0.3s ease; }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="login-screen" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-4">
+        <div class="w-full max-w-md">
+            <div class="text-center mb-8">
+                <h1 class="text-4xl font-bold text-gray-800 mb-2">Vineyard</h1>
+                <p class="text-gray-600">Restaurant Service Management</p>
+            </div>
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <div class="mb-3">
+                    <label class="block text-sm font-medium mb-1" for="username">Username</label>
+                    <input id="username" class="w-full border rounded px-3 py-2" />
+                </div>
+                <div class="mb-3">
+                    <label class="block text-sm font-medium mb-1" for="password">Password</label>
+                    <input id="password" type="password" class="w-full border rounded px-3 py-2" />
+                </div>
+                <div class="mb-6">
+                    <label class="block text-sm font-medium mb-1" for="role">Role</label>
+                    <select id="role" class="w-full border rounded px-3 py-2">
+                        <option value="server">Server</option>
+                        <option value="expo">Expeditor</option>
+                        <option value="junior-sommelier">Junior Sommelier</option>
+                        <option value="head-sommelier">Head Sommelier</option>
+                        <option value="manager">Manager</option>
+                    </select>
+                </div>
+                <button id="login-btn" class="w-full bg-red-800 text-white rounded py-2">Login</button>
+            </div>
+            <p class="text-center text-sm text-gray-500 mt-4">Demo user/password: demo</p>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="app" class="hidden min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-white shadow-md">
+            <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+                <div class="flex items-center">
+                    <h1 class="text-2xl font-bold text-red-900">Vineyard</h1>
+                    <span id="current-role" class="ml-4 px-3 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">Role</span>
+                </div>
+                <div class="flex items-center">
+                    <span id="current-user" class="mr-4 text-gray-600">User</span>
+                    <button id="logout-btn" class="text-sm text-red-800 hover:text-red-900">Logout</button>
+                </div>
+            </div>
+            <div class="container mx-auto px-4 border-b border-gray-200">
+                <nav class="flex space-x-8">
+                    <button class="tab-btn tab-active py-4 px-1 text-sm font-medium" data-tab="service">Service</button>
+                    <button class="tab-btn py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700" data-tab="wine-list">Wine List</button>
+                    <button class="tab-btn py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700" data-tab="reports">Reports</button>
+                    <button class="tab-btn py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700" data-tab="inventory">Inventory</button>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Content -->
+        <main class="flex-grow container mx-auto px-4 py-6">
+            <!-- Service Tab -->
+            <div id="service-tab" class="tab-content">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">Active Tables</h2>
+                    <button id="add-table-btn" class="bg-red-800 hover:bg-red-900 text-white font-medium py-2 px-4 rounded-md">Add Table</button>
+                </div>
+                <div class="mb-4 flex justify-end">
+                    <label for="table-sort" class="mr-2 text-sm text-gray-600 self-center">Sort by</label>
+                    <select id="table-sort" class="border rounded px-2 py-1 text-sm">
+                        <option value="arrival">Arrival (newest)</option>
+                        <option value="arrival-asc">Arrival (oldest)</option>
+                        <option value="number">Table Number</option>
+                        <option value="status">Status</option>
+                    </select>
+                </div>
+                <div id="tables-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            </div>
+
+            <!-- Wine List Tab -->
+            <div id="wine-list-tab" class="tab-content hidden">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">Wine List</h2>
+                    <div class="flex space-x-2">
+                        <input id="wine-search" type="text" placeholder="Search..." class="px-4 py-2 border rounded-md" />
+                        <button id="add-wine-btn" class="bg-red-800 hover:bg-red-900 text-white font-medium py-2 px-4 rounded-md">Add Wine</button>
+                    </div>
+                </div>
+                <div id="wines-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            </div>
+
+            <!-- Reports Tab -->
+            <div id="reports-tab" class="tab-content hidden">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">Reports</h2>
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h3 class="text-xl font-semibold mb-4">Generate Report</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-1" for="report-type">Report Type</label>
+                            <select id="report-type" class="w-full border rounded px-3 py-2">
+                                <option value="sales">Wine Sales</option>
+                                <option value="service">Service Timing</option>
+                                <option value="inventory">Inventory Status</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1" for="report-date">Date</label>
+                            <input type="date" id="report-date" class="w-full border rounded px-3 py-2" />
+                        </div>
+                    </div>
+                    <button id="generate-report-btn" class="bg-red-800 hover:bg-red-900 text-white font-medium py-2 px-4 rounded-md">Generate Report</button>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-xl font-semibold mb-4">Recent Reports</h3>
+                    <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead>
+                            <tr>
+                                <th class="px-6 py-3 bg-gray-50 text-left">Date</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left">Type</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left">Generated By</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reports-list" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Inventory Tab -->
+            <div id="inventory-tab" class="tab-content hidden">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">Wine Inventory</h2>
+                    <div class="flex space-x-2">
+                        <select id="inventory-filter" class="px-4 py-2 border rounded-md">
+                            <option value="all">All</option>
+                            <option value="red">Red</option>
+                            <option value="white">White</option>
+                            <option value="sparkling">Sparkling</option>
+                            <option value="rose">Rosé</option>
+                            <option value="dessert">Dessert</option>
+                        </select>
+                        <button id="update-inventory-btn" class="bg-red-800 hover:bg-red-900 text-white font-medium py-2 px-4 rounded-md">Update Inventory</button>
+                    </div>
+                </div>
+                <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead>
+                            <tr>
+                                <th class="px-6 py-3 bg-gray-50 text-left">Wine</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left">Type</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left">Vintage</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left">In Stock</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left">Price</th>
+                                <th class="px-6 py-3 bg-gray-50 text-left">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-list" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add Table Modal -->
+    <div id="add-table-modal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">Add Table</h3>
+                <button class="close-modal text-gray-500 hover:text-gray-700">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="table-number">Table Number</label>
+                <input id="table-number" type="number" class="border rounded w-full px-3 py-2" />
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="server-name">Server</label>
+                <select id="server-name" class="border rounded w-full px-3 py-2">
+                    <option value="John">John</option>
+                    <option value="Sarah">Sarah</option>
+                    <option value="Michael">Michael</option>
+                    <option value="Emma">Emma</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="guests-count">Guests</label>
+                <input id="guests-count" type="number" class="border rounded w-full px-3 py-2" />
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="room-number">Room (optional)</label>
+                <input id="room-number" class="border rounded w-full px-3 py-2" />
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="special-notes">Notes</label>
+                <textarea id="special-notes" class="border rounded w-full px-3 py-2" rows="2"></textarea>
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button class="close-modal px-4 py-2">Cancel</button>
+                <button id="save-table-btn" class="bg-red-800 hover:bg-red-900 text-white px-4 py-2 rounded">Add Table</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Course Modal -->
+    <div id="add-course-modal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">Add Course</h3>
+                <button class="close-modal text-gray-500 hover:text-gray-700">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <input type="hidden" id="course-table-id" />
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="course-name">Course</label>
+                <select id="course-name" class="border rounded w-full px-3 py-2">
+                    <option value="Bread & Water">Bread & Water</option>
+                    <option value="Wine Service">Wine Service</option>
+                    <option value="Appetizer">Appetizer</option>
+                    <option value="Starter">Starter</option>
+                    <option value="Salad">Salad</option>
+                    <option value="Entree">Entree</option>
+                    <option value="Dessert">Dessert</option>
+                    <option value="Canoe">Cheese/Canoe</option>
+                    <option value="Petit Fours">Petit Fours</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="course-wine">Paired Wine</label>
+                <select id="course-wine" class="border rounded w-full px-3 py-2">
+                    <option value="">None</option>
+                    <option value="Chardonnay, Sonoma 2019">Chardonnay, Sonoma 2019</option>
+                    <option value="Pinot Noir, Willamette Valley 2018">Pinot Noir, Willamette Valley 2018</option>
+                    <option value="Cabernet Sauvignon, Napa 2017">Cabernet Sauvignon, Napa 2017</option>
+                    <option value="Sauvignon Blanc, New Zealand 2020">Sauvignon Blanc, New Zealand 2020</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="course-notes">Notes</label>
+                <textarea id="course-notes" class="border rounded w-full px-3 py-2" rows="2"></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="course-timing">Timing</label>
+                <select id="course-timing" class="border rounded w-full px-3 py-2">
+                    <option value="immediate">Immediate</option>
+                    <option value="5">After 5 minutes</option>
+                    <option value="10">After 10 minutes</option>
+                    <option value="15">After 15 minutes</option>
+                    <option value="20">After 20 minutes</option>
+                    <option value="30">After 30 minutes</option>
+                    <option value="custom">Custom timing</option>
+                </select>
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button class="close-modal px-4 py-2">Cancel</button>
+                <button id="save-course-btn" class="bg-red-800 hover:bg-red-900 text-white px-4 py-2 rounded">Add Course</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Wine Modal -->
+    <div id="add-wine-modal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">Add Wine</h3>
+                <button class="close-modal text-gray-500 hover:text-gray-700">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="wine-name">Wine Name</label>
+                <input id="wine-name" class="border rounded w-full px-3 py-2" />
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="wine-type">Type</label>
+                <select id="wine-type" class="border rounded w-full px-3 py-2">
+                    <option value="Red">Red</option>
+                    <option value="White">White</option>
+                    <option value="Sparkling">Sparkling</option>
+                    <option value="Rosé">Rosé</option>
+                    <option value="Dessert">Dessert</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="wine-vintage">Vintage</label>
+                <input id="wine-vintage" type="number" class="border rounded w-full px-3 py-2" />
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="wine-country">Country</label>
+                <select id="wine-country" class="border rounded w-full px-3 py-2">
+                    <option value="">Select Country</option>
+                    <option value="France">France</option>
+                    <option value="Italy">Italy</option>
+                    <option value="Spain">Spain</option>
+                    <option value="Germany">Germany</option>
+                    <option value="USA">United States</option>
+                    <option value="Australia">Australia</option>
+                    <option value="New Zealand">New Zealand</option>
+                    <option value="Argentina">Argentina</option>
+                    <option value="Chile">Chile</option>
+                    <option value="Portugal">Portugal</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="wine-region">Region</label>
+                <select id="wine-region" class="border rounded w-full px-3 py-2"></select>
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="wine-price">Price</label>
+                <input id="wine-price" type="number" class="border rounded w-full px-3 py-2" />
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="wine-stock">Stock</label>
+                <input id="wine-stock" type="number" class="border rounded w-full px-3 py-2" />
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button class="close-modal px-4 py-2">Cancel</button>
+                <button id="save-wine-btn" class="bg-red-800 hover:bg-red-900 text-white px-4 py-2 rounded">Add Wine</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Update Inventory Modal -->
+    <div id="update-inventory-modal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">Update Inventory</h3>
+                <button class="close-modal text-gray-500 hover:text-gray-700">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <input type="hidden" id="inventory-wine-id" />
+            <div class="mb-3">
+                <label class="block text-sm mb-1">Wine</label>
+                <input id="inventory-wine-name" class="border rounded w-full px-3 py-2 bg-gray-100" readonly />
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1">Current Stock</label>
+                <input id="inventory-current-stock" type="number" class="border rounded w-full px-3 py-2 bg-gray-100" readonly />
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="inventory-adjustment-type">Adjustment</label>
+                <div class="flex">
+                    <select id="inventory-adjustment-type" class="border rounded-l px-3 py-2">
+                        <option value="add">Add</option>
+                        <option value="remove">Remove</option>
+                    </select>
+                    <input id="inventory-adjustment-amount" type="number" class="border-t border-b border-r rounded-r px-3 py-2 flex-grow" />
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm mb-1" for="inventory-notes">Notes</label>
+                <textarea id="inventory-notes" class="border rounded w-full px-3 py-2" rows="2"></textarea>
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button class="close-modal px-4 py-2">Cancel</button>
+                <button id="save-inventory-btn" class="bg-red-800 hover:bg-red-900 text-white px-4 py-2 rounded">Update</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Report Modal -->
+    <div id="view-report-modal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="report-title" class="text-xl font-semibold">Report</h3>
+                <button class="close-modal text-gray-500 hover:text-gray-700">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div id="report-content" class="mb-6"></div>
+            <div class="flex justify-end space-x-2">
+                <button class="close-modal px-4 py-2">Close</button>
+                <button id="print-report-btn" class="bg-red-800 hover:bg-red-900 text-white px-4 py-2 rounded">Print</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+let tables = [];
+let wines = [];
+
+let currentUser = null;
+let currentRole = null;
+
+const rolePermissions = {
+    'server': { tabs: ['service'], canAddTable: false, canAddWine: false, canUpdateInventory: false, canAccessReports: false },
+    'expo': { tabs: ['service','reports'], canAddTable: true, canAddWine: false, canUpdateInventory: false, canAccessReports: true },
+    'junior-sommelier': { tabs: ['service','wine-list'], canAddTable: false, canAddWine: false, canUpdateInventory: false, canAccessReports: false },
+    'head-sommelier': { tabs: ['service','wine-list','inventory','reports'], canAddTable: true, canAddWine: true, canUpdateInventory: true, canAccessReports: true },
+    'manager': { tabs: ['service','wine-list','inventory','reports'], canAddTable: true, canAddWine: true, canUpdateInventory: true, canAccessReports: true }
+};
+
+const byId = id => document.getElementById(id);
+
+function applyRolePermissions(role){
+    const perms = rolePermissions[role];
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        const tab = btn.dataset.tab;
+        if(perms.tabs.includes(tab)) btn.classList.remove('hidden');
+        else btn.classList.add('hidden');
+    });
+    if(perms.tabs.length){
+        const first = perms.tabs[0];
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+        byId(first + '-tab').classList.remove('hidden');
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active','text-gray-900'));
+        document.querySelector(`.tab-btn[data-tab="${first}"]`).classList.add('tab-active','text-gray-900');
+    }
+    byId('add-table-btn').style.display = perms.canAddTable ? 'block':'none';
+    byId('add-wine-btn').style.display = perms.canAddWine ? 'block':'none';
+    byId('update-inventory-btn').style.display = perms.canUpdateInventory ? 'block':'none';
+}
+
+// Login
+byId('login-btn').addEventListener('click', () => {
+    const u = byId('username').value;
+    const p = byId('password').value;
+    const role = byId('role').value;
+    fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: u, password: p })
+    })
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(data => {
+        currentUser = data.name;
+        currentRole = role;
+        byId('current-user').textContent = currentUser;
+        byId('current-role').textContent = role.charAt(0).toUpperCase() + role.slice(1);
+        byId('login-screen').classList.add('hidden');
+        byId('app').classList.remove('hidden');
+        applyRolePermissions(role);
+        loadTables();
+        loadWines().then(loadInventory);
+    })
+    .catch(() => alert('Invalid credentials'));
+});
+
+byId('logout-btn').addEventListener('click', () => location.reload());
+
+// Tab navigation
+const tabButtons = document.querySelectorAll('.tab-btn');
+tabButtons.forEach(btn => btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    tabButtons.forEach(b => b.classList.remove('tab-active','text-gray-900'));
+    btn.classList.add('tab-active','text-gray-900');
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+    byId(tab+'-tab').classList.remove('hidden');
+}));
+
+// Modal helpers
+function openModal(id){ byId(id).classList.remove('hidden'); }
+function closeAllModals(){ document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden')); }
+document.querySelectorAll('.close-modal').forEach(btn => btn.addEventListener('click', closeAllModals));
+
+// Add Table
+byId('add-table-btn').addEventListener('click', () => openModal('add-table-modal'));
+byId('save-table-btn').addEventListener('click', () => {
+    const number = byId('table-number').value;
+    const server = byId('server-name').value;
+    const guests = parseInt(byId('guests-count').value,10);
+    if(!number || !server || !guests){ alert('Please fill in all fields'); return; }
+    const room = byId('room-number').value;
+    const notes = byId('special-notes').value;
+    fetch('/api/tables', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number, server, guests, roomNumber: room, notes })
+    })
+    .then(r => r.json())
+    .then(table => {
+        tables.push(table);
+        renderTable(table);
+        closeAllModals();
+    });
+});
+
+function openAddCourseModal(id){ byId('course-table-id').value = id; openModal('add-course-modal'); }
+byId('save-course-btn').addEventListener('click', () => {
+    const tableId = parseInt(byId('course-table-id').value);
+    const courseName = byId('course-name').value;
+    const courseWine = byId('course-wine').value;
+    fetch(`/api/tables/${tableId}/courses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: courseName, wine: courseWine })
+    })
+    .then(r => r.json())
+    .then(course => {
+        const table = tables.find(t => t.id === tableId);
+        if(table){
+            table.courses.push(course);
+            updateTableCard(table);
+        }
+        closeAllModals();
+    });
+});
+
+// Add wine
+byId('add-wine-btn').addEventListener('click', () => openModal('add-wine-modal'));
+byId('save-wine-btn').addEventListener('click', () => {
+    const name = byId('wine-name').value;
+    const type = byId('wine-type').value;
+    const vintage = parseInt(byId('wine-vintage').value,10);
+    const region = byId('wine-region').value;
+    const price = parseFloat(byId('wine-price').value);
+    const stock = parseInt(byId('wine-stock').value,10);
+    if(!name || !type || !vintage || !region || isNaN(price) || isNaN(stock)){ alert('Please fill in all fields'); return; }
+    fetch('/api/wines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, type, vintage, region, price, stock })
+    })
+    .then(r => r.json())
+    .then(wine => {
+        wines.push(wine);
+        loadWines();
+        loadInventory();
+        closeAllModals();
+    });
+});
+
+// Update inventory
+function openUpdateInventoryModal(id){
+    const wine = wines.find(w => w.id === id);
+    if(!wine) return;
+    byId('inventory-wine-id').value = wine.id;
+    byId('inventory-wine-name').value = `${wine.name}, ${wine.vintage}`;
+    byId('inventory-current-stock').value = wine.stock;
+    byId('inventory-adjustment-amount').value = '';
+    byId('inventory-notes').value = '';
+    openModal('update-inventory-modal');
+}
+byId('save-inventory-btn').addEventListener('click', () => {
+    const id = parseInt(byId('inventory-wine-id').value);
+    const type = byId('inventory-adjustment-type').value;
+    const amount = parseInt(byId('inventory-adjustment-amount').value,10);
+    if(isNaN(amount) || amount<=0){ alert('Invalid amount'); return; }
+    const wine = wines.find(w => w.id === id);
+    if(!wine) return;
+    let newStock = wine.stock;
+    if(type==='add') newStock += amount; else if(wine.stock >= amount) newStock -= amount; else { alert('Too few bottles'); return; }
+    fetch(`/api/wines/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stock: newStock })
+    })
+    .then(r => r.json())
+    .then(updated => {
+        wine.stock = updated.stock;
+        loadInventory();
+        updateWineCards();
+        closeAllModals();
+    });
+});
+
+document.getElementById('update-inventory-btn').addEventListener('click', () => openModal('update-inventory-modal'));
+
+// Reports
+function generateWineSalesReport(){
+    return `<p class="mb-4">This is a placeholder sales report.</p>`;
+}
+function generateServiceTimingReport(){
+    return `<p class="mb-4">Service timing data not yet implemented.</p>`;
+}
+function generateInventoryReport(){
+    return `<p class="mb-4">Inventory totals: ${wines.reduce((a,w)=>a+w.stock,0)} bottles.</p>`;
+}
+
+byId('generate-report-btn').addEventListener('click', () => {
+    const type = byId('report-type').value;
+    const date = byId('report-date').value || new Date().toISOString().split('T')[0];
+    let content = '';
+    let title = '';
+    switch(type){
+        case 'sales': title = `Wine Sales Report - ${date}`; content = generateWineSalesReport(); break;
+        case 'service': title = `Service Timing Report - ${date}`; content = generateServiceTimingReport(); break;
+        case 'inventory': title = `Inventory Status Report - ${date}`; content = generateInventoryReport(); break;
+    }
+    byId('report-title').textContent = title;
+    byId('report-content').innerHTML = content;
+    openModal('view-report-modal');
+});
+
+document.getElementById('print-report-btn').addEventListener('click', () => window.print());
+
+// Data loading
+async function loadTables(){
+    const resp = await fetch('/api/tables');
+    tables = await resp.json();
+    byId('tables-container').innerHTML = '';
+    tables.forEach(t => renderTable(t));
+}
+
+async function loadWines(){
+    const resp = await fetch('/api/wines');
+    wines = await resp.json();
+    byId('wines-container').innerHTML='';
+    wines.forEach(w => renderWine(w));
+}
+
+function loadInventory(){
+    byId('inventory-list').innerHTML='';
+    wines.forEach(w => renderInventoryRow(w));
+}
+
+function renderTable(table){
+    const div = document.createElement('div');
+    div.className = 'bg-white rounded-lg shadow-md overflow-hidden';
+    div.id = `table-${table.id}`;
+    byId('tables-container').appendChild(div);
+    updateTableCard(table);
+}
+
+function updateTableCard(table){
+    const card = byId(`table-${table.id}`);
+    if(!card) return;
+    let statusColor = 'bg-gray-100 text-gray-800';
+    if(table.status==='In Progress') statusColor='bg-yellow-100 text-yellow-800';
+    if(table.status==='Completed') statusColor='bg-green-100 text-green-800';
+    const time = new Date(table.arrivalTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    card.innerHTML = `
+        <div class="p-4 border-b border-gray-200">
+            <div class="flex justify-between">
+                <div>
+                    <h3 class="text-lg font-semibold">Table ${table.number}</h3>
+                    <p class="text-sm text-gray-600">Server: ${table.server}</p>
+                    <p class="text-xs text-gray-500">Arrived: ${time}</p>
+                </div>
+                <div>
+                    <span class="px-2 py-1 ${statusColor} text-xs font-medium rounded-full">${table.status}</span>
+                    <span class="ml-2 text-sm text-gray-600">${table.guests} guests</span>
+                </div>
+            </div>
+        </div>
+        <div class="p-4">
+            <div class="mb-3 flex justify-between items-center">
+                <h4 class="font-medium">Courses</h4>
+                <button class="text-sm text-red-800 hover:text-red-900 font-medium add-course-btn" data-table-id="${table.id}">Add Course</button>
+            </div>
+            <div class="space-y-2">
+                ${table.courses.map(c => `<div class="flex justify-between items-center p-2 bg-gray-50 rounded"><span>${c.name}${c.wine?` - ${c.wine}`:''}</span><span class="text-xs">${c.status}</span></div>`).join('')}
+            </div>
+        </div>
+        <div class="p-4 bg-gray-50 border-t flex justify-between">
+            <button class="text-sm text-red-800 hover:text-red-900 font-medium complete-table-btn" data-table-id="${table.id}">${table.status==='Completed' ? 'Reopen Table':'Complete Table'}</button>
+            <button class="text-sm text-gray-600 hover:text-gray-800 font-medium remove-table-btn" data-table-id="${table.id}">Remove</button>
+        </div>`;
+    card.querySelector('.add-course-btn').addEventListener('click', () => openAddCourseModal(table.id));
+    card.querySelector('.complete-table-btn').addEventListener('click', () => { toggleTableCompletion(table.id); });
+    card.querySelector('.remove-table-btn').addEventListener('click', () => { removeTable(table.id); });
+}
+
+function toggleTableCompletion(id){
+    const table = tables.find(t => t.id===id); if(!table) return;
+    table.status = table.status==='Completed' ? 'In Progress':'Completed';
+    updateTableCard(table);
+}
+function removeTable(id){
+    tables = tables.filter(t => t.id!==id);
+    const el = byId(`table-${id}`); if(el) el.remove();
+}
+
+function renderWine(wine){
+    const card = document.createElement('div');
+    card.className = 'wine-card bg-white rounded-lg shadow-md overflow-hidden';
+    card.innerHTML = `
+        <div class="p-4">
+            <h3 class="text-lg font-semibold">${wine.name}</h3>
+            <p class="text-sm text-gray-600">${wine.producer}</p>
+            <div class="mt-2 grid grid-cols-2 gap-2 text-sm">
+                <div><p class="text-gray-500">Type</p><p>${wine.type}</p></div>
+                <div><p class="text-gray-500">Vintage</p><p>${wine.vintage}</p></div>
+                <div><p class="text-gray-500">Region</p><p>${wine.region}</p></div>
+                <div><p class="text-gray-500">Price</p><p>$${wine.price}</p></div>
+            </div>
+            <div class="mt-4 flex justify-between items-center">
+                <div>
+                    <p class="text-xs text-gray-500">Stock</p>
+                    <p class="text-sm ${wine.stock<10?'text-red-600 font-medium':''}">${wine.stock} bottles</p>
+                </div>
+                <button class="text-sm text-red-800 hover:text-red-900 font-medium update-wine-btn" data-wine-id="${wine.id}">Update</button>
+            </div>
+        </div>`;
+    byId('wines-container').appendChild(card);
+    card.querySelector('.update-wine-btn').addEventListener('click', () => openUpdateInventoryModal(wine.id));
+}
+
+function renderInventoryRow(wine){
+    const tr = document.createElement('tr');
+    if(wine.stock<10) tr.classList.add('bg-red-50');
+    tr.innerHTML = `
+        <td class="px-6 py-4 whitespace-nowrap">${wine.name}, ${wine.producer}</td>
+        <td class="px-6 py-4 whitespace-nowrap">${wine.type}</td>
+        <td class="px-6 py-4 whitespace-nowrap">${wine.vintage}</td>
+        <td class="px-6 py-4 whitespace-nowrap ${wine.stock<10?'text-red-600 font-medium':''}">${wine.stock}</td>
+        <td class="px-6 py-4 whitespace-nowrap">$${wine.price}</td>
+        <td class="px-6 py-4 whitespace-nowrap"><button class="text-red-800 hover:text-red-900 font-medium inv-update-btn" data-wine-id="${wine.id}">Update</button></td>`;
+    byId('inventory-list').appendChild(tr);
+    tr.querySelector('.inv-update-btn').addEventListener('click', () => openUpdateInventoryModal(wine.id));
+}
+
+function updateWineCards(){
+    byId('wines-container').innerHTML=''; wines.forEach(w => renderWine(w));
+}
+
+// Wine regions for add wine modal
+const wineRegions = {
+    'France': ['Bordeaux','Burgundy','Champagne','Alsace'],
+    'Italy': ['Piedmont','Tuscany','Veneto'],
+    'Spain': ['Rioja','Ribera del Duero','Priorat'],
+    'Germany': ['Mosel','Rheingau','Pfalz'],
+    'USA': ['Napa Valley','Sonoma','Willamette Valley'],
+    'Australia': ['Barossa Valley','Hunter Valley'],
+    'New Zealand': ['Marlborough','Central Otago'],
+    'Argentina': ['Mendoza','Salta'],
+    'Chile': ['Maipo','Colchagua'],
+    'Portugal': ['Douro','Alentejo']
+};
+
+byId('wine-country').addEventListener('change', () => {
+    const country = byId('wine-country').value;
+    const regionSel = byId('wine-region');
+    regionSel.innerHTML = '<option value="">Select Region</option>';
+    if(wineRegions[country]){
+        wineRegions[country].forEach(r => {
+            const opt = document.createElement('option'); opt.value = r; opt.textContent = r; regionSel.appendChild(opt);
+        });
+    }
+});
+</script>
+</body>
+</html>
