@@ -42,3 +42,18 @@ class Service(Base):
     quantity = Column(Integer, nullable=False)
     notes = Column(String, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+from sqlalchemy import Column, Integer, String, DateTime
+from app.db import Base
+from datetime import datetime
+
+class ServiceEntry(Base):
+    __tablename__ = "service_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    wine_name = Column(String, nullable=False)
+    table_number = Column(Integer, nullable=False)
+    quantity = Column(Integer, nullable=False)
+    notes = Column(String, nullable=True)
+    served_by = Column(String, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)

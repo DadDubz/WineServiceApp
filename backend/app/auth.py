@@ -42,6 +42,13 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
 # ---------- Authenticated User Route ----------
 
-@router.get("/auth/me", response_model=schemas.UserOut)
+from app.schemas import UserOut
+
+@router.get("/auth/me", response_model=UserOut)
 def read_users_me(current_user: models.User = Depends(get_current_user)):
-    return current_user
+    return UserOut(
+        id=current_user.id,
+        username=current_user.username,
+        role=current_user.role
+    )
+
