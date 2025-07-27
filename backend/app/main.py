@@ -1,18 +1,14 @@
 # app/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import auth as auth_routes
-from app.routes import wines, tables
-from app.models import Base  # <-- Add this
-from app.db import engine    # <-- And this
-from app.routes import service  # ✅ import the route module
-from app.routes import service
+from app.models import Base
+from app.db import engine
+from app.routes import auth, wines, tables, service, inventory
 
 app = FastAPI()
-app.include_router(service.router)  # ✅ register the router
 
 # Ensure tables are created
-Base.metadata.create_all(bind=engine)  # <-- This creates app.db if not exists
+Base.metadata.create_all(bind=engine)
 
 # CORS middleware
 app.add_middleware(
@@ -24,6 +20,8 @@ app.add_middleware(
 )
 
 # Include your routers
-app.include_router(auth_routes.router)
+app.include_router(auth.router)
 app.include_router(wines.router)
 app.include_router(tables.router)
+app.include_router(service.router)
+app.include_router(inventory.router)
