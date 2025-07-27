@@ -4,8 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.models import Base
 from app.db import engine
 from app.routes import auth, wines, tables, service, inventory
+from app.routes import inventory  # already done
 
 app = FastAPI()
+app.include_router(inventory.router)
 
 # Ensure tables are created
 Base.metadata.create_all(bind=engine)
