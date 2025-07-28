@@ -1,9 +1,12 @@
-# backend/app/services/inventory_service.py
-
 from sqlalchemy.orm import Session
 from app.models import Wine
 
 class InventoryService:
+    @staticmethod
+    def get_all_inventory(db: Session):
+        # Unified method for your /inventory/ route
+        return db.query(Wine).all()
+
     @staticmethod
     def get_all_wines(db: Session):
         return db.query(Wine).all()
