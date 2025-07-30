@@ -1,3 +1,4 @@
+
 # backend/app/routes/roles.py
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +11,8 @@ router = APIRouter(prefix="/roles", tags=["Roles"])
 
 @router.post("/", response_model=RoleResponse)
 def create_role(role: RoleCreate, db: Session = Depends(get_db)):
+    if role.name.lower() not in ["owner", "manager", "expo", "servers", "host", "chef"]:
+        raise HTTPException(status_code=400, detail="Invalid role name")
     existing_role = RoleCRUD.get_role_by_name(db, role.name)
     if existing_role:
         raise HTTPException(status_code=400, detail="Role already exists")

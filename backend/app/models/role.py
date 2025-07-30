@@ -1,5 +1,3 @@
-# backend/app/models/role.py
-
 from sqlalchemy import Column, Integer, String
 from app.database import Base
 
