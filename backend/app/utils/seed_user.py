@@ -8,7 +8,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 db = SessionLocal()
 
 def create_test_user():
-    username = "adman"
+    username = "admin"
     password = "admin123!"
     role = "manager"
 
