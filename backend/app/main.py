@@ -7,6 +7,7 @@ from app.routes import auth, wines, tables, service, inventory
 from app.routes import inventory  # already done
 from app.routes import roles
 from app.routes import reports  # or whatever new file
+from app.routes import reports
 
 app = FastAPI()
 app.include_router(roles.router)
