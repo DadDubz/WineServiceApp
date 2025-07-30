@@ -3,7 +3,9 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from app.models import *
 
+Base = declarative_base()
 SQLALCHEMY_DATABASE_URL = "sqlite:///./wine_service.db"  # adjust path if needed
 
 engine = create_engine(
@@ -11,7 +13,7 @@ engine = create_engine(
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base()
+Base.metadata.create_all(bind=engine)
 
 # ✅ Add this function at the bottom if it’s missing
 def get_db():

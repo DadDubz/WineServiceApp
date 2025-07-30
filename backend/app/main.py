@@ -5,6 +5,8 @@ from app.models import Base
 from app.db import engine
 from app.routes import auth, wines, tables, service, inventory
 from app.routes import inventory  # already done
+from app.routes import roles
+app.include_router(roles.router)
 
 app = FastAPI()
 app.include_router(inventory.router)

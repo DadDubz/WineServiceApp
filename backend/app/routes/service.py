@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from app.models import ServiceEntry, User
-from app.schemas import ServiceCreate, ServiceOut
+from backend.app.utils.schemas import ServiceCreate, ServiceOut
 from app.db import get_db
 from app.auth import get_current_user
 
