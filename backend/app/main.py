@@ -6,9 +6,11 @@ from app.db import engine
 from app.routes import auth, wines, tables, service, inventory
 from app.routes import inventory  # already done
 from app.routes import roles
-app.include_router(roles.router)
+from app.routes import reports  # or whatever new file
 
 app = FastAPI()
+app.include_router(roles.router)
+app.include_router(reports.router)
 app.include_router(inventory.router)
 
 # Ensure tables are created

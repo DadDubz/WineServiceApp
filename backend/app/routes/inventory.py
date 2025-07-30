@@ -4,6 +4,7 @@ from app.database import get_db
 from app.services.inventory_service import InventoryService
 from backend.app.utils.schemas import WineOut
 from pydantic import BaseModel
+from app.utils.auth import require_role  # Import require_role
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
@@ -28,3 +29,6 @@ def adjust_inventory(data: AdjustStockRequest, db: Session = Depends(get_db)):
     if not wine:
         raise HTTPException(status_code=404, detail="Wine not found")
     return wine
+
+@router.get("/reports", dependencies=[Depends(require_role("manager", "owner"))])
+def get_reports(): ...
