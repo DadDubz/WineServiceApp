@@ -8,6 +8,9 @@ from app.routes import inventory  # already done
 from app.routes import roles
 from app.routes import reports  # or whatever new file
 from app.routes import reports
+from app.routes import report
+app.include_router(report.router)
+
 
 app = FastAPI()
 app.include_router(roles.router)
