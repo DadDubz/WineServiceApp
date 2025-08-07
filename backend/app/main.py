@@ -9,10 +9,13 @@ from app.routes import roles
 from app.routes import reports  # or whatever new file
 from app.routes import reports
 from app.routes import report
-app.include_router(report.router)
 
+from app.routes import wine  # add this
 
 app = FastAPI()
+
+app.include_router(report.router)
+app.include_router(wine.router)  # add this
 app.include_router(roles.router)
 app.include_router(reports.router)
 app.include_router(inventory.router)
