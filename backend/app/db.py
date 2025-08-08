@@ -1,6 +1,9 @@
 import os
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import sessionmaker
+
+# Use the Base defined in the models package
+from app.models.base import Base
 
 # Database setup
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -11,9 +14,7 @@ engine = create_engine(
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base()
-
-# ✅ This is the important part
+# Unified DB session dependency
 def get_db():
     db = SessionLocal()
     try:

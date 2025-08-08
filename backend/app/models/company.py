@@ -13,4 +13,4 @@ class Company(Base):
     name = Column(String, nullable=False, unique=True)
 
     users = relationship("User", back_populates="company")
-inventory_items = relationship("InventoryItem", back_populates="company", cascade="all, delete")
+    inventory_items = relationship("InventoryItem", back_populates="company", cascade="all, delete")

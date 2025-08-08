@@ -5,7 +5,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   user: any;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -19,9 +19,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
   useEffect(() => {
+    const token = localStorage.getItem('authToken');
     const checkAuth = async () => {
       try {
-        const res = await axios.get(`${API}/auth/me`, { withCredentials: true });
+        if (!token) throw new Error('no token');
+        const res = await axios.get(`${API}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         setUser(res.data);
         setIsAuthenticated(true);
       } catch {
@@ -35,18 +39,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     checkAuth();
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const res = await axios.post(
-      `${API}/auth/login`,
-      { email, password },
-      { withCredentials: true }
-    );
-    setUser(res.data);
+  const login = async (username: string, password: string) => {
+    const data = new URLSearchParams();
+    data.append('username', username);
+    data.append('password', password);
+    const res = await axios.post(`${API}/auth/login`, data, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+    localStorage.setItem('authToken', res.data.access_token);
+    const me = await axios.get(`${API}/auth/me`, {
+      headers: { Authorization: `Bearer ${res.data.access_token}` },
+    });
+    setUser(me.data);
     setIsAuthenticated(true);
   };
 
   const logout = async () => {
-    await axios.post(`${API}/auth/logout`, {}, { withCredentials: true });
+    localStorage.removeItem('authToken');
     setUser(null);
     setIsAuthenticated(false);
   };
