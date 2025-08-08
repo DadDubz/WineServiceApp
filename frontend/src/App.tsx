@@ -1,12 +1,15 @@
 // src/App.tsx
 import React from 'react';
-import AppRoutes from './router';
+import { Outlet } from 'react-router-dom';
+import { AuthProvider } from '@/context/AuthContext';
 
 const App = () => {
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      <AppRoutes />
-    </div>
+    <AuthProvider>
+      <div className="min-h-screen bg-gray-50 text-gray-900">
+        <Outlet />
+      </div>
+    </AuthProvider>
   );
 };
 
