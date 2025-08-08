@@ -4,23 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.models import Base
 from app.db import engine
 from app.routes import auth, wines, tables, service, inventory
-from app.routes import inventory  # already done
 from app.routes import roles
-from app.routes import reports  # or whatever new file
 from app.routes import reports
 from app.routes import report
-
-from app.routes import wine  # add this
+load_dotenv()
+from app.routes import report
+from dotenv import load_dotenv
 
 app = FastAPI()
-
-app.include_router(report.router)
-app.include_router(wine.router)  # add this
-app.include_router(roles.router)
-app.include_router(reports.router)
-app.include_router(inventory.router)
-
-# Ensure tables are created
 Base.metadata.create_all(bind=engine)
 
 # CORS middleware
@@ -37,4 +28,6 @@ app.include_router(auth.router)
 app.include_router(wines.router)
 app.include_router(tables.router)
 app.include_router(service.router)
+app.include_router(roles.router)
+app.include_router(reports.router)
 app.include_router(inventory.router)

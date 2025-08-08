@@ -1,34 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.database import get_db
-from app.services.inventory_service import InventoryService
-from backend.app.utils.schemas import WineOut
-from pydantic import BaseModel
-from app.utils.auth import require_role  # Import require_role
+from app.dependencies import get_db
+from app.schemas.inventory import InventoryCreate, InventoryUpdate, InventoryOut
+from app.services import inventory_service
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
-# GET /inventory/
-@router.get("/", response_model=list[WineOut])
-def get_inventory(db: Session = Depends(get_db)):
-    return InventoryService.get_all_inventory(db)
+@router.get("/", response_model=list[InventoryOut])
+def read_inventory(company_id: int, db: Session = Depends(get_db)):
+    return inventory_service.get_inventory_items(db, company_id)
 
-# GET /inventory/low-stock
-@router.get("/low-stock", response_model=list[WineOut])
-def get_low_stock_inventory(threshold: int = 5, db: Session = Depends(get_db)):
-    return InventoryService.get_low_stock_wines(db, threshold=threshold)
+@router.post("/", response_model=InventoryOut)
+def create_item(item: InventoryCreate, company_id: int, db: Session = Depends(get_db)):
+    return inventory_service.create_inventory_item(db, item, company_id)
 
-# POST /inventory/adjust
-class AdjustStockRequest(BaseModel):
-    wine_id: int
-    quantity: int  # positive to add, negative to subtract
+@router.put("/{item_id}", response_model=InventoryOut)
+def update_item(item_id: int, item: InventoryUpdate, db: Session = Depends(get_db)):
+    return inventory_service.update_inventory_item(db, item_id, item)
 
-@router.post("/adjust", response_model=WineOut)
-def adjust_inventory(data: AdjustStockRequest, db: Session = Depends(get_db)):
-    wine = InventoryService.adjust_wine_stock(db, data.wine_id, data.quantity)
-    if not wine:
-        raise HTTPException(status_code=404, detail="Wine not found")
-    return wine
-
-@router.get("/reports", dependencies=[Depends(require_role("manager", "owner"))])
-def get_reports(): ...
+@router.delete("/{item_id}")
+def delete_item(item_id: int, db: Session = Depends(get_db)):
+    inventory_service.delete_inventory_item(db, item_id)
+    return {"ok": True}
