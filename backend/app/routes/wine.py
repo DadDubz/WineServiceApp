@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.wine import Wine
 from app.schemas.wine import WineCreate, WineUpdate, WineOut
-from app.auth import get_current_user, require_role
+from app.routes.auth import get_current_user, require_role
 from typing import List
 
 router = APIRouter()

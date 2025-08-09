@@ -20,7 +20,7 @@ class TokenResponse(BaseModel):
 class UserOut(BaseModel):
     id: int
     username: str
-    role: str
+    role: Optional[str] = None
 
     class Config:
         orm_mode = True
@@ -29,12 +29,10 @@ class UserOut(BaseModel):
 
 class WineCreate(BaseModel):
     name: str
-    producer: Optional[str] = ""
-    type: str
-    vintage: int
-    region: Optional[str] = ""
-    price: int
-    stock: int
+    vintage: Optional[str] = None
+    varietal: Optional[str] = None
+    region: Optional[str] = None
+    notes: Optional[str] = None
 
 class WineOut(WineCreate):
     id: int
@@ -72,10 +70,13 @@ class ServiceCreate(BaseModel):
     quantity: int
     notes: Optional[str] = None
 
-class ServiceOut(ServiceCreate):
+class ServiceOut(BaseModel):
     id: int
+    wine_id: int
+    table_id: int
+    quantity_served: int
     served_by: str
-    timestamp: datetime
+    served_at: datetime
 
     class Config:
         orm_mode = True

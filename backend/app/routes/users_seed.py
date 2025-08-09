@@ -1,6 +1,6 @@
 from app.db import Base, engine, SessionLocal
-from app.models import User
-from app.auth import hash_password
+from app.models.user import User
+from app.auth import get_password_hash
 
 def seed_users():
     Base.metadata.create_all(bind=engine)
@@ -12,7 +12,12 @@ def seed_users():
     ]
     for u in users:
         if not db.query(User).filter_by(username=u["username"]).first():
-            user = User(username=u["username"], password_hash=hash_password(u["password"]), role=u["role"])
+            user = User(
+                username=u["username"],
+                email=f"{u['username']}@example.com",
+                hashed_password=get_password_hash(u["password"]),
+                role=u["role"],
+            )
             db.add(user)
     db.commit()
     db.close()

@@ -4,47 +4,56 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from app import models, auth_utils
-from app.database import get_db
-from app import schemas
+from app.models.user import User
+from app.auth import verify_password, create_access_token, decode_token
+from app.db import get_db
+from app.schemas.schemas import TokenResponse, UserCreate, UserOut
 
 router = APIRouter(tags=["Auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 # Dependency to get the current user from token
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    data = auth_utils.decode_token(token)
+    data = decode_token(token)
     if not data:
         raise HTTPException(status_code=401, detail="Invalid token")
-    user = db.query(models.User).filter(models.User.username == data["sub"]).first()
+    user = db.query(User).filter(User.username == data["sub"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-@router.post("/auth/login", response_model=schemas.TokenResponse)
+# Role requirement decorator
+def require_role(*roles):
+    def checker(current_user: User = Depends(get_current_user)):
+        if current_user.role not in roles:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        return current_user
+    return checker
+
+@router.post("/auth/login", response_model=TokenResponse)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.username == form_data.username).first()
-    if not user or not auth_utils.verify_password(form_data.password, user.password_hash):
+    user = db.query(User).filter(User.username == form_data.username).first()
+    if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
-    token = auth_utils.create_access_token({"sub": user.username})
+    token = create_access_token({"sub": user.username})
     return {"access_token": token, "token_type": "bearer"}
 
-@router.get("/auth/me", response_model=schemas.UserOut)
-def read_users_me(current_user: models.User = Depends(get_current_user)):
+@router.get("/auth/me", response_model=UserOut)
+def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
-@router.post("/auth/register", response_model=schemas.UserOut)
-def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    existing_user = db.query(models.User).filter(models.User.username == user.username).first()
+@router.post("/auth/register", response_model=UserOut)
+def register_user(user: UserCreate, db: Session = Depends(get_db)):
+    existing_user = db.query(User).filter(User.username == user.username).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Username already taken")
 
-    valid_roles = ["owner", "manager", "expo", "servers", "host", "chef"]
-    if user.role.lower() not in valid_roles:
-        raise HTTPException(status_code=400, detail="Invalid role")
+    hashed_pw = create_access_token  # placeholder to force error if used incorrectly
+    # Proper hashing via app.auth.get_password_hash
+    from app.auth import get_password_hash
+    hashed = get_password_hash(user.password)
 
-    hashed_pw = auth_utils.get_password_hash(user.password)
-    new_user = models.User(username=user.username, password_hash=hashed_pw, role=user.role)
+    new_user = User(username=user.username, email=f"{user.username}@example.com", hashed_password=hashed)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)

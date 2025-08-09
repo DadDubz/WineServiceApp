@@ -2,10 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from app.models import ServiceEntry, User
-from backend.app.utils.schemas import ServiceCreate, ServiceOut
+from app.models.service_log import ServiceLog
+from app.models.user import User
+from app.schemas.schemas import ServiceCreate, ServiceOut
 from app.db import get_db
-from app.auth import get_current_user
+from app.routes.auth import get_current_user
 
 router = APIRouter(prefix="/service", tags=["Service"])
 
@@ -15,13 +16,12 @@ def log_wine_service(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    entry = ServiceEntry(
-        wine_name=service_data.wine_name,
-        table_number=service_data.table_number,
-        quantity=service_data.quantity,
-        notes=service_data.notes,
+    entry = ServiceLog(
+        wine_id=0,  # TODO: map by name if needed
+        table_id=service_data.table_number,
+        quantity_served=service_data.quantity,
         served_by=current_user.username,
-        timestamp=datetime.utcnow()
+        served_at=datetime.utcnow()
     )
     db.add(entry)
     db.commit()
@@ -33,4 +33,4 @@ def get_service_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return db.query(ServiceEntry).order_by(ServiceEntry.timestamp.desc()).all()
+    return db.query(ServiceLog).order_by(ServiceLog.served_at.desc()).all()

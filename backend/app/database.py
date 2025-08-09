@@ -1,24 +1,4 @@
 # backend/app/database.py
-
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from app.models import *
-
-Base = declarative_base()
-SQLALCHEMY_DATABASE_URL = "sqlite:///./wine_service.db"  # adjust path if needed
-
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}  # SQLite only
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base.metadata.create_all(bind=engine)
-
-# ✅ Add this function at the bottom if it’s missing
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Re-export common DB objects to maintain backward compatibility with older imports
+from app.db import engine, SessionLocal, get_db
+from app.models.base import Base
