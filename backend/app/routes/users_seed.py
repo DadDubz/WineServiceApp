@@ -1,26 +1,33 @@
-from app.db import Base, engine, SessionLocal
+# backend/app/routes/user_seed.py
+
+from sqlalchemy.orm import Session
+from app.db import get_db
 from app.models.user import User
 from app.auth import get_password_hash
 
-def seed_users():
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    users = [
-        {"username": "expo1", "password": "pass", "role": "expo"},
-        {"username": "sommelier1", "password": "pass", "role": "sommelier"},
-        {"username": "manager1", "password": "pass", "role": "manager"},
-    ]
-    for u in users:
-        if not db.query(User).filter_by(username=u["username"]).first():
-            user = User(
-                username=u["username"],
-                email=f"{u['username']}@example.com",
-                hashed_password=get_password_hash(u["password"]),
-                role=u["role"],
-            )
-            db.add(user)
+def seed_user():
+    db: Session = next(get_db())
+
+    username = "admin"
+    password = "password"
+    email = "admin@example.com"
+    role = "admin"
+
+    existing = db.query(User).filter(User.username == username).first()
+    if existing:
+        print("User already exists!")
+        return
+
+    user = User(
+        username=username,
+        email=email,
+        hashed_password=get_password_hash(password),
+        role=role
+    )
+    db.add(user)
     db.commit()
-    db.close()
+    db.refresh(user)
+    print(f"Created user: {username}/{password}")
 
 if __name__ == "__main__":
-    seed_users()
+    seed_user()
