@@ -1,20 +1,17 @@
-import os
 from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# Use the Base defined in the models package
-from app.models.base import Base
-
-# Database setup
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE_URL = f"sqlite:///{os.path.join(BASE_DIR, 'app.db')}"
+SQLALCHEMY_DATABASE_URL = "sqlite:///./app.db"  # adjust for Postgres/MySQL if needed
 
 engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False}
+    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Unified DB session dependency
+Base = declarative_base()
+
+# Dependency
 def get_db():
     db = SessionLocal()
     try:

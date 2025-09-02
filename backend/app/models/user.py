@@ -1,18 +1,17 @@
-# backend/app/models/user.py
-
 from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
-from app.models.base import Base
-
+from app.db import Base
 
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
-    email = Column(String, unique=True, index=True, nullable=True)
+    email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    role = Column(String, nullable=True)  # e.g., manager, sommelier, expo
+    role = Column(String, nullable=False)
 
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=True)
+
+    # relationships
     company = relationship("Company", back_populates="users")
