@@ -14,5 +14,5 @@ class Wine(Base):
     region = Column(String, nullable=True)
     notes = Column(String, nullable=True)
 
-    # Example of relationship to inventory or service if needed in future
-    # inventory_items = relationship("Inventory", back_populates="wine")
+    # Relationships
+    service_logs = relationship("ServiceLog", back_populates="wine")
