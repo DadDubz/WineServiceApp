@@ -6,7 +6,13 @@ import { AuthProvider } from '@/context/AuthContext';
 const App = () => {
   return (
     <AuthProvider>
-      <div className="min-h-screen bg-gray-50 text-gray-900">
+      <div 
+        className="min-h-screen" 
+        style={{ 
+          backgroundColor: '#F8F5F0',
+          color: '#1A1A1A'
+        }}
+      >
         <Outlet />
       </div>
     </AuthProvider>
