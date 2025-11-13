@@ -16,18 +16,20 @@ export default function LoginPage() {
     setError(null);
     try {
       const { access_token } = await login(username, password);
-      // Persist token
-      localStorage.setItem("token", access_token);
+      // Persist token with correct key
+      localStorage.setItem("authToken", access_token);
+      localStorage.setItem("token", access_token); // Keep both for compatibility
 
-      // (Optional) verify & fetch profile
+      // Verify & fetch profile
       try {
         const profile = await me(access_token);
         localStorage.setItem("user", JSON.stringify(profile));
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.error("Failed to fetch profile:", err);
       }
 
-      nav("/"); // go to dashboard (or wherever you like)
+      // Navigate to dashboard
+      nav("/");
     } catch (err: any) {
       setError(err?.message || "Login failed");
     } finally {
