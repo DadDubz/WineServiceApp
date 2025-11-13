@@ -6,6 +6,9 @@ from app.models.base import Base
 from app.models.user import User
 from app.models.wine import Wine
 from app.models.table import Table
+from app.models.company import Company
+from app.models.inventory import InventoryItem
+from app.models.service_log import ServiceLog
 from app.auth import get_password_hash
 
 def init_database():
