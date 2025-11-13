@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 from app.routes.auth import router as auth_router
 from app.routes.wines import router as wines_router
@@ -7,11 +8,21 @@ from app.routes.tables import router as tables_router
 
 app = FastAPI()
 
-# Allowed origins for Vite frontend during development
+# Get APP_URL from environment for production CORS
+app_url = os.environ.get("APP_URL", "")
+frontend_url = app_url if app_url else "http://localhost:5173"
+
+# Allowed origins for CORS
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
+
+# Add production URL if available
+if app_url and app_url not in origins:
+    origins.append(app_url)
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,13 +32,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(auth_router, prefix="/auth")
-app.include_router(wines_router, prefix="/wines")
-app.include_router(tables_router, prefix="/tables")
+# Include routers with /api prefix for Kubernetes ingress
+app.include_router(auth_router, prefix="/api/auth")
+app.include_router(wines_router, prefix="/api/wines")
+app.include_router(tables_router, prefix="/api/tables")
 
 
 # Optional health check
-@app.get("/healthz")
+@app.get("/api/healthz")
 def healthz():
     return {"ok": True}
