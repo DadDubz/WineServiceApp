@@ -83,30 +83,24 @@ def seed_wines():
         demo_wines = [
             {
                 "name": "Chardonnay",
-                "producer": "Sonoma Vineyards",
-                "wine_type": "White",
-                "vintage": 2019,
+                "vintage": "2019",
+                "varietal": "Chardonnay",
                 "region": "Sonoma, CA",
-                "price": 65.0,
-                "stock": 24
+                "notes": "Crisp and refreshing with notes of apple and citrus. Produced by Sonoma Vineyards."
             },
             {
                 "name": "Pinot Noir",
-                "producer": "Willamette Valley Vineyards",
-                "wine_type": "Red",
-                "vintage": 2018,
+                "vintage": "2018",
+                "varietal": "Pinot Noir",
                 "region": "Willamette Valley, OR",
-                "price": 78.0,
-                "stock": 18
+                "notes": "Elegant red with cherry and earthy notes. From Willamette Valley Vineyards."
             },
             {
                 "name": "Cabernet Sauvignon",
-                "producer": "Napa Cellars",
-                "wine_type": "Red",
-                "vintage": 2017,
+                "vintage": "2017",
+                "varietal": "Cabernet Sauvignon",
                 "region": "Napa Valley, CA",
-                "price": 95.0,
-                "stock": 12
+                "notes": "Full-bodied with dark fruit and oak. Premium selection from Napa Cellars."
             }
         ]
 
