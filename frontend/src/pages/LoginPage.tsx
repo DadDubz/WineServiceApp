@@ -1,10 +1,11 @@
 // src/pages/LoginPage.tsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { login, me } from "../lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 export default function LoginPage() {
   const nav = useNavigate();
+  const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -15,23 +16,14 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const { access_token } = await login(username, password);
-      // Persist token with correct key
-      localStorage.setItem("authToken", access_token);
-      localStorage.setItem("token", access_token); // Keep both for compatibility
-
-      // Verify & fetch profile
-      try {
-        const profile = await me(access_token);
-        localStorage.setItem("user", JSON.stringify(profile));
-      } catch (err) {
-        console.error("Failed to fetch profile:", err);
-      }
-
+      // Use AuthContext login method
+      await login(username, password);
+      
       // Navigate to dashboard
       nav("/");
     } catch (err: any) {
-      setError(err?.message || "Login failed");
+      setError(err?.message || "Invalid credentials. Please try again.");
+      console.error("Login error:", err);
     } finally {
       setBusy(false);
     }
