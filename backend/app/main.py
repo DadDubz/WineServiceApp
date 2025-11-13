@@ -34,8 +34,8 @@ app.add_middleware(
 
 # Include routers with /api prefix for Kubernetes ingress
 app.include_router(auth_router, prefix="/api/auth")
-app.include_router(wines_router, prefix="/api/wines")
-app.include_router(tables_router, prefix="/api/tables")
+app.include_router(wines_router, prefix="/api")
+app.include_router(tables_router, prefix="/api")
 
 
 # Optional health check
