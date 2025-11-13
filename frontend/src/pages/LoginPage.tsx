@@ -36,36 +36,98 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
-      <div className="w-full max-w-sm rounded-2xl bg-white shadow p-6">
-        <h1 className="text-2xl font-bold mb-4">Login</h1>
+    <div 
+      className="min-h-screen flex items-center justify-center p-6" 
+      style={{ backgroundColor: '#F8F5F0' }}
+    >
+      {/* Wine bottle decoration */}
+      <div className="absolute top-8 left-8 text-6xl opacity-10">🍷</div>
+      <div className="absolute bottom-8 right-8 text-6xl opacity-10">🍇</div>
+      
+      <div 
+        className="w-full max-w-md rounded-xl shadow-2xl p-8 relative overflow-hidden"
+        style={{ backgroundColor: '#FEFEFE' }}
+      >
+        {/* Maroon accent bar */}
+        <div 
+          className="absolute top-0 left-0 right-0 h-2"
+          style={{ backgroundColor: '#6B1F2F' }}
+        />
+        
+        {/* Wine glass icon */}
+        <div className="text-center mb-6">
+          <div className="text-5xl mb-3">🍷</div>
+          <h1 
+            className="text-3xl font-bold tracking-tight"
+            style={{ color: '#6B1F2F', fontFamily: 'Playfair Display, Georgia, serif' }}
+          >
+            Wine Service
+          </h1>
+          <p 
+            className="text-sm mt-2"
+            style={{ color: '#B89968' }}
+          >
+            Premium Wine Management System
+          </p>
+        </div>
 
         {error && (
-          <div className="mb-4 rounded-md bg-red-50 p-3 text-red-700 text-sm">
+          <div 
+            className="mb-4 rounded-lg p-3 text-sm border"
+            style={{ 
+              backgroundColor: '#FEE2E2', 
+              color: '#991B1B',
+              borderColor: '#FCA5A5' 
+            }}
+          >
             {error}
           </div>
         )}
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium mb-1">Username</label>
+            <label 
+              className="block text-sm font-semibold mb-2"
+              style={{ color: '#6B1F2F' }}
+            >
+              Username
+            </label>
             <input
               type="text"
               autoComplete="username"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-lg px-4 py-3 focus:outline-none focus:ring-2 transition-all"
+              style={{ 
+                border: '1.5px solid #D4AF88',
+                backgroundColor: '#FEFEFE',
+                color: '#1A1A1A'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#6B1F2F'}
+              onBlur={(e) => e.target.style.borderColor = '#D4AF88'}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g. expo1"
+              placeholder="manager1"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Password</label>
+            <label 
+              className="block text-sm font-semibold mb-2"
+              style={{ color: '#6B1F2F' }}
+            >
+              Password
+            </label>
             <input
               type="password"
               autoComplete="current-password"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-lg px-4 py-3 focus:outline-none focus:ring-2 transition-all"
+              style={{ 
+                border: '1.5px solid #D4AF88',
+                backgroundColor: '#FEFEFE',
+                color: '#1A1A1A'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#6B1F2F'}
+              onBlur={(e) => e.target.style.borderColor = '#D4AF88'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
@@ -76,15 +138,31 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-lg bg-indigo-600 text-white font-medium px-4 py-2 hover:bg-indigo-700 disabled:opacity-50"
+            className="w-full rounded-lg font-semibold px-4 py-3 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ 
+              backgroundColor: '#6B1F2F',
+              color: '#FEFEFE'
+            }}
+            onMouseEnter={(e) => !busy && (e.currentTarget.style.backgroundColor = '#8B2A3F')}
+            onMouseLeave={(e) => !busy && (e.currentTarget.style.backgroundColor = '#6B1F2F')}
           >
-            {busy ? "Signing in…" : "Sign in"}
+            {busy ? "Signing in…" : "Sign In"}
           </button>
         </form>
 
-        <p className="text-xs text-gray-500 mt-4">
-          Demo users (from seed): <code>expo1</code>, <code>sommelier1</code>, <code>manager1</code> — password <code>pass</code>
-        </p>
+        <div 
+          className="mt-6 pt-6 text-center text-xs"
+          style={{ 
+            borderTop: '1px solid #E8D4B8',
+            color: '#6B1F2F'
+          }}
+        >
+          <p className="font-medium mb-2">Demo Accounts</p>
+          <div className="space-y-1 text-xs" style={{ color: '#B89968' }}>
+            <p><strong>manager1</strong>, <strong>sommelier1</strong>, <strong>expo1</strong></p>
+            <p>Password: <code className="px-2 py-1 rounded" style={{ backgroundColor: '#F8F5F0' }}>pass</code></p>
+          </div>
+        </div>
       </div>
     </div>
   );
