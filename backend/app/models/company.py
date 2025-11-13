@@ -10,3 +10,4 @@ class Company(Base):
 
     # relationships
     users = relationship("User", back_populates="company")
+    inventory_items = relationship("InventoryItem", back_populates="company")
