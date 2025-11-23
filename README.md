@@ -69,8 +69,65 @@ npm run dev
 ```
 - Open http://localhost:5173
 
-## Notes
-- API base URL is configured via `VITE_API_BASE_URL` in frontend and defaults to `http://localhost:8000`.
-- Auth uses OAuth2 Password to get a JWT; the token is stored in `localStorage` and sent as `Authorization: Bearer`.
-- The older demo server in `backend/server.py` is deprecated. Use the FastAPI app (`app.main`).
-- The `WineServiceApp-Frontend` directory appears to be a legacy scaffold; the active frontend is `frontend/`.
+## 🌐 Deployment
+
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for comprehensive deployment guides including:
+- Docker deployment
+- Cloud platforms (Render, Railway, Heroku, Fly.io)
+- GitHub Actions CI/CD
+- Production configuration
+
+## 👥 Demo Credentials
+
+| Username | Password | Role |
+|----------|----------|------|
+| manager1 | pass | Manager (Full access) |
+| sommelier1 | pass | Sommelier (Wine management) |
+| expo1 | pass | Expo (Service) |
+| server1 | pass | Server |
+
+## 📸 Screenshots
+
+**Login Page** - Elegant maroon/tan design with wine glass branding
+
+**Dashboard** - Stats cards, wine inventory, and role-based features
+
+## 🔧 API Endpoints
+
+- `POST /api/auth/login` - User authentication
+- `GET /api/auth/me` - Current user profile
+- `GET /api/wines/` - List all wines
+- `POST /api/wines/` - Add wine (Manager/Sommelier)
+- `GET /api/tables/` - List tables
+- `POST /api/tables/` - Create table
+- `GET /api/healthz` - Health check
+
+## 📝 Notes
+
+- API routes prefixed with `/api` for Kubernetes ingress compatibility
+- JWT tokens stored in `localStorage` with `authToken` key
+- Frontend environment: `VITE_API_BASE_URL`
+- Backend environment: `SECRET_KEY`, `ACCESS_TOKEN_EXPIRE_MINUTES`
+- The older `backend/server.py` is deprecated - use `app.main:app`
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push and create a Pull Request
+
+## 📄 License
+
+MIT License - See LICENSE file for details
+
+## 🙏 Support
+
+For issues or questions:
+- Open a GitHub Issue
+- Check SETUP_COMPLETE.md for detailed setup info
+- See DEPLOYMENT.md for deployment help
+
+---
+
+**Built with ❤️ for premium wine service excellence** 🍷
