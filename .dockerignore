@@ -1,57 +1,78 @@
-# Node modules
-node_modules/
-frontend/node_modules/
-frontend/.vite/
+# Node modules (will be installed in container)
+**/node_modules
+frontend/node_modules
+frontend/.vite
 
 # Python cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
 .Python
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
-.venv/
-venv/
+**/*.so
+**/*.egg
+**/*.egg-info
+.venv
+venv
+backend/.venv
 
-# Database files
-*.db
-*.sqlite
-*.sqlite3
+# Database files (will be created in container)
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+backend/app.db
+backend/wine_service.db
+
+# Build outputs (frontend will be built in container)
+frontend/dist
+frontend/build
 
 # Logs
-*.log
-logs/
+**/*.log
+logs
 
-# Environment files (should be set in deployment)
+# Environment files (set via container env vars)
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
 # IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+.vscode
+.idea
+**/*.swp
+**/*.swo
+**/*~
 
 # OS
 .DS_Store
 Thumbs.db
+**/.DS_Store
 
 # Git
-.git/
+.git
 .gitignore
+.gitattributes
 
 # Testing
-coverage/
+coverage
 .coverage
-htmlcov/
+htmlcov
+.pytest_cache
 
-# Documentation
-*.md
-docs/
+# Documentation (not needed in container)
+README.md
+DEPLOYMENT.md
+SETUP_COMPLETE.md
+docs
+
+# CI/CD
+.github
+
+# Docker files (don't copy into container)
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Scripts
+push-to-github.sh
