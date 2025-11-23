@@ -413,4 +413,7 @@ FodyWeavers.xsd
 *.msm
 *.msp
 # .gitignore
-venv/ 
+venv/ -e 
+# Environment files
+*.env
+*.env.*
