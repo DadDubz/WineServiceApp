@@ -18,11 +18,15 @@ origins = [
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://wine-service-demo.preview.emergentagent.com",
 ]
 
 # Add production URL if available
 if app_url and app_url not in origins:
     origins.append(app_url)
+
+# Allow all preview subdomains
+origins.append("https://*.preview.emergentagent.com")
 
 app.add_middleware(
     CORSMiddleware,
