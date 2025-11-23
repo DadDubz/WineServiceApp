@@ -1,12 +1,28 @@
-# WineServiceApp
+# 🍷 WineServiceApp
 
-Full-stack app for wine service and inventory.
+**Premium Wine Service & Inventory Management System**
 
-## Tech
-- Backend: FastAPI, SQLAlchemy, SQLite (dev)
-- Frontend: React + Vite
+Full-stack application with elegant maroon/tan design, perfect for fine dining establishments.
 
-## Quick start (Docker)
+[![Docker Build](https://github.com/DadDubz/WineServiceApp/actions/workflows/docker-build.yml/badge.svg)](https://github.com/DadDubz/WineServiceApp/actions)
+
+## 🎨 Features
+
+- ✅ **User Authentication** - JWT-based secure login
+- ✅ **Role-Based Access** - Manager, Sommelier, Expo, Server roles
+- ✅ **Wine Inventory** - Track wines with vintage, region, and tasting notes
+- ✅ **Table Management** - Service tracking and course management
+- ✅ **Premium Design** - Maroon/tan/white professional color scheme
+- ✅ **Responsive UI** - Works on desktop, tablet, and mobile
+
+## 🚀 Tech Stack
+
+- **Backend**: FastAPI, SQLAlchemy, SQLite/PostgreSQL
+- **Frontend**: React 19, Vite 7, TypeScript, Tailwind CSS 4
+- **Auth**: JWT (OAuth2 Password Flow)
+- **Deployment**: Docker, Docker Compose, GitHub Actions
+
+## ⚡ Quick Start (Docker)
 
 Prereqs: Docker and Docker Compose installed.
 
