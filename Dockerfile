@@ -30,12 +30,11 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy and install Python dependencies
-COPY backend/requirements.txt ./backend/
-RUN pip install --no-cache-dir -r backend/requirements.txt
-
 # Copy backend code
-COPY backend/ ./backend/
+COPY backend ./backend
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r backend/requirements.txt
 
 # Copy frontend build from builder stage
 COPY --from=frontend-builder /build/dist ./frontend/dist
