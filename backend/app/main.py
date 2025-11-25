@@ -45,7 +45,21 @@ app.include_router(wines_router, prefix="/api")
 app.include_router(tables_router, prefix="/api")
 
 
-# Optional health check
+# Health check
 @app.get("/api/healthz")
 def healthz():
     return {"ok": True}
+
+# Serve frontend static files (production only)
+frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
+if frontend_dist.exists():
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+    
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        # Serve index.html for all non-API routes (SPA routing)
+        if not full_path.startswith("api/"):
+            index_file = frontend_dist / "index.html"
+            if index_file.exists():
+                return FileResponse(index_file)
+        return {"error": "Not found"}
