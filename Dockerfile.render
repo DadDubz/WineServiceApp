@@ -1,0 +1,44 @@
+# Production Dockerfile for Render.com
+# Serves both frontend and backend on the same port
+
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /build
+COPY frontend ./
+RUN yarn install --frozen-lockfile
+RUN yarn build
+
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy backend
+COPY backend ./backend
+RUN pip install --no-cache-dir -r backend/requirements.txt
+
+# Copy frontend build
+COPY --from=frontend-builder /build/dist ./frontend/dist
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PORT=10000
+
+# Expose port (Render uses PORT env var)
+EXPOSE $PORT
+
+# Create startup script that serves frontend through FastAPI
+RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "🍷 Initializing Wine Service App..."\n\
+cd /app/backend && python init_db.py\n\
+echo "Starting server on port ${PORT:-10000}..."\n\
+cd /app/backend && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+CMD ["/app/start.sh"]
