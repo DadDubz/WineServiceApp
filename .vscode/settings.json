@@ -2,5 +2,7 @@
     "color-highlight.rgbWithNoFunctionLanguages": [
         
         "*"
-    ]
+    ],
+    "evenBetterToml.formatter.crlf": true,
+    "prettier.endOfLine": "crlf"
 }
