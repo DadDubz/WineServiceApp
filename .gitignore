@@ -9,6 +9,10 @@
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 .venv/
+venv/
+env/
+*/venv/
+*/env/
 
 # Mono auto generated files
 mono_crash.*
