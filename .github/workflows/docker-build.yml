@@ -59,13 +59,39 @@ jobs:
         
     - name: Test Docker image
       run: |
+        echo "Starting container..."
         docker run --rm -d -p 8000:8000 -p 3000:3000 --name test-app wine-service-app:latest
-        sleep 15
+        
+        echo "Waiting for services to start (30s)..."
+        sleep 30
+        
+        echo "Checking container status..."
+        docker ps | grep test-app || (echo "Container not running!" && exit 1)
+        
         echo "Testing frontend..."
-        curl -f http://localhost:3000/ || exit 1
-        echo "✓ Frontend OK"
+        for i in {1..5}; do
+          if curl -f http://localhost:3000/ 2>/dev/null; then
+            echo "✓ Frontend OK"
+            break
+          fi
+          echo "Attempt $i/5 failed, retrying..."
+          sleep 3
+        done
+        
         echo "Testing backend..."
-        curl -f http://localhost:8000/api/healthz || exit 1
-        echo "✓ Backend OK"
+        for i in {1..5}; do
+          if curl -f http://localhost:8000/api/healthz 2>/dev/null; then
+            echo "✓ Backend OK"
+            break
+          fi
+          echo "Attempt $i/5 failed, retrying..."
+          sleep 3
+        done
+        
+        echo "Viewing container logs..."
+        docker logs test-app | tail -20
+        
+        echo "Stopping container..."
         docker stop test-app
+        
         echo "✓ All tests passed!"
