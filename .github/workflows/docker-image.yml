@@ -2,17 +2,25 @@ name: Docker Image CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
 
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
+      run: |
+        echo "🍷 Building Wine Service App Docker image..."
+        docker build . --file Dockerfile --tag wine-service-app:$(date +%s)
+        echo "✅ Build successful!"
+        
+    - name: Verify build (optional)
+      run: |
+        echo "Checking if image was created..."
+        docker images | grep wine-service-app || echo "Warning: Image not found in list"
