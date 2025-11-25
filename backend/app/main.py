@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import os
+from pathlib import Path
 
 from app.routes.auth import router as auth_router
 from app.routes.wines import router as wines_router
