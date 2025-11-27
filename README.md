@@ -27,22 +27,29 @@ Full-stack application with elegant maroon/tan design, perfect for fine dining e
 Prereqs: Docker and Docker Compose installed.
 
 1) Copy env examples (optional):
+
 ```
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 ```
+
 2) Build and run:
+
 ```
 docker compose up --build
 ```
-- Backend: http://localhost:8000
-- Frontend: http://localhost:5173
+
+- Backend: <http://localhost:8000>
+- Frontend: <http://localhost:5173>
 
 3) Seed demo users (in another shell):
+
 ```
 docker compose exec backend python -m app.routes.users_seed
 ```
+
 Demo users:
+
 - manager1 / pass
 - sommelier1 / pass
 - expo1 / pass
@@ -52,6 +59,7 @@ Demo users:
 Prereqs: Python 3.11 with venv, Node 20+
 
 Backend:
+
 ```
 cd backend
 python3.11 -m venv .venv
@@ -61,17 +69,20 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 Frontend:
+
 ```
 cd frontend
 cp .env.example .env  # ensures API base URL
 npm ci
 npm run dev
 ```
-- Open http://localhost:5173
+
+- Open <http://localhost:5173>
 
 ## 🌐 Deployment
 
 See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for comprehensive deployment guides including:
+
 - Docker deployment
 - Cloud platforms (Render, Railway, Heroku, Fly.io)
 - GitHub Actions CI/CD
@@ -124,6 +135,7 @@ MIT License - See LICENSE file for details
 ## 🙏 Support
 
 For issues or questions:
+
 - Open a GitHub Issue
 - Check SETUP_COMPLETE.md for detailed setup info
 - See DEPLOYMENT.md for deployment help
