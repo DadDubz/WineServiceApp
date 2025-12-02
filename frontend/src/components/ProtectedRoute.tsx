@@ -1,21 +1,28 @@
-import { useAuth } from '@/context/AuthContext';
-import { Navigate } from 'react-router-dom';
-import { ReactNode } from 'react';
+import { ReactNode } from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
 
-type Props = {
+interface ProtectedRouteProps {
   children: ReactNode;
-};
+}
 
-export default function ProtectedRoute({ children }: Props) {
-  const { isAuthenticated, loading } = useAuth();
+export default function ProtectedRoute({ children }: ProtectedRouteProps) {
+  const { user, isLoading } = useAuth();
 
-  if (loading) {
-    return <div className="text-center py-8">Loading...</div>;
+  // While loading the current user, don't flash redirects
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F8F5F0]">
+        <p className="text-sm text-gray-600">Loading…</p>
+      </div>
+    );
   }
 
-  if (!isAuthenticated) {
+  // Not logged in → kick to login
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
 
+  // Logged in → render the protected content
   return <>{children}</>;
 }
