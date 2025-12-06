@@ -38,56 +38,71 @@ export default function DashboardPage() {
   return (
     <Layout>
       <div>
+        {/* Welcome Header */}
+        <div style={{ marginBottom: '32px' }}>
+          <h1 style={{ fontSize: '32px', fontWeight: '700', color: '#6B1F2F', fontFamily: 'Playfair Display, Georgia, serif', marginBottom: '8px' }}>
+            Welcome, {user?.username || 'Guest'}!
+          </h1>
+          <p style={{ color: '#B89968', fontSize: '16px' }}>
+            Here's your service overview for today
+          </p>
+        </div>
+
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div 
-            className="rounded-xl p-6 shadow-lg"
-            style={{ backgroundColor: '#FEFEFE' }}
-          >
-            <div className="flex items-center justify-between">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '32px' }}>
+          <div style={{ backgroundColor: '#FEFEFE', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #E8D4B8' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
-                <p className="text-sm font-semibold" style={{ color: '#B89968' }}>
+                <p style={{ fontSize: '14px', fontWeight: '600', color: '#B89968', marginBottom: '8px' }}>
                   Total Wines
                 </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#6B1F2F' }}>
+                <p style={{ fontSize: '36px', fontWeight: '700', color: '#6B1F2F' }}>
                   {wines.length}
                 </p>
               </div>
-              <div className="text-4xl">🍾</div>
+              <div style={{ fontSize: '48px' }}>🍾</div>
             </div>
           </div>
 
-          <div 
-            className="rounded-xl p-6 shadow-lg"
-            style={{ backgroundColor: '#FEFEFE' }}
-          >
-            <div className="flex items-center justify-between">
+          <div style={{ backgroundColor: '#FEFEFE', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #E8D4B8' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
-                <p className="text-sm font-semibold" style={{ color: '#B89968' }}>
-                  Active Tables
+                <p style={{ fontSize: '14px', fontWeight: '600', color: '#B89968', marginBottom: '8px' }}>
+                  Tables
                 </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#6B1F2F' }}>
-                  0
+                <p style={{ fontSize: '36px', fontWeight: '700', color: '#6B1F2F' }}>
+                  {tables.length}
                 </p>
               </div>
-              <div className="text-4xl">🍽️</div>
+              <div style={{ fontSize: '48px' }}>🍽️</div>
             </div>
           </div>
 
-          <div 
-            className="rounded-xl p-6 shadow-lg"
-            style={{ backgroundColor: '#FEFEFE' }}
-          >
-            <div className="flex items-center justify-between">
+          <div style={{ backgroundColor: '#FEFEFE', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #E8D4B8' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
-                <p className="text-sm font-semibold" style={{ color: '#B89968' }}>
-                  User Role
+                <p style={{ fontSize: '14px', fontWeight: '600', color: '#B89968', marginBottom: '8px' }}>
+                  Guests
                 </p>
-                <p className="text-xl font-bold mt-2 capitalize" style={{ color: '#6B1F2F' }}>
+                <p style={{ fontSize: '36px', fontWeight: '700', color: '#6B1F2F' }}>
+                  {guests.length}
+                </p>
+              </div>
+              <div style={{ fontSize: '48px' }}>👥</div>
+            </div>
+          </div>
+
+          <div style={{ backgroundColor: '#FEFEFE', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #E8D4B8' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ fontSize: '14px', fontWeight: '600', color: '#B89968', marginBottom: '8px' }}>
+                  Your Role
+                </p>
+                <p style={{ fontSize: '24px', fontWeight: '700', color: '#6B1F2F', textTransform: 'capitalize' }}>
                   {user?.role || 'Guest'}
                 </p>
               </div>
-              <div className="text-4xl">👤</div>
+              <div style={{ fontSize: '48px' }}>👤</div>
             </div>
           </div>
         </div>
