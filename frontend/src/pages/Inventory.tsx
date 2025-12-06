@@ -1,9 +1,37 @@
-// src/pages/Inventory.tsx
-export default function Inventory() {
+// src/pages/InventoryPage.tsx
+import MainLayout from "@/layout/MainLayout";
+
+export default function InventoryPage() {
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold">Sommelier Inventory Page</h1>
-      <p>Track wine inventory, stock, and costs here.</p>
-    </div>
+    <MainLayout
+      title="Wine Inventory"
+      subtitle="Cellar overview and bottle tracking"
+    >
+      <div
+        className="rounded-xl shadow-lg p-6"
+        style={{ backgroundColor: "#FEFEFE" }}
+      >
+        <h2
+          className="text-2xl font-bold mb-4"
+          style={{
+            color: "#6B1F2F",
+            fontFamily: "Playfair Display, Georgia, serif",
+          }}
+        >
+          Inventory (coming next)
+        </h2>
+        <p className="text-sm text-gray-700 mb-4">
+          This screen will show all wines with counts, par levels, and cost/sell
+          pricing. For now, it’s just a placeholder while we get the Dinner
+          Service screen dialed in.
+        </p>
+
+        <ul className="text-sm text-gray-700 list-disc pl-5 space-y-1">
+          <li>Wine list by category (sparkling, white, red, dessert).</li>
+          <li>Search and filters by region / varietal / vintage.</li>
+          <li>Ability to adjust counts after service.</li>
+        </ul>
+      </div>
+    </MainLayout>
   );
 }
