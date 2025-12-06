@@ -39,11 +39,23 @@ class TableResponse(BaseModel):
     class Config:
         from_attributes = True
 
-@router.get("/", response_model=List[TableResponse])
+@router.get("/")
 def get_tables(db: Session = Depends(get_db)):
     """Get all tables with their guests"""
     tables = db.query(Table).all()
-    return tables
+    return [
+        {
+            "id": t.id,
+            "number": t.number,
+            "name": t.name,
+            "capacity": t.capacity,
+            "server": t.server,
+            "status": t.status,
+            "notes": t.notes,
+            "guests": [{"id": g.id, "name": g.name, "room_number": g.room_number} for g in t.guests]
+        }
+        for t in tables
+    ]
 
 @router.post("/", response_model=TableResponse)
 def create_table(table_data: TableCreate, db: Session = Depends(get_db)):
