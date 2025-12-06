@@ -1,173 +1,270 @@
 // src/pages/DashboardPage.tsx
 import { useEffect, useState } from "react";
 import MainLayout from "@/layouts/MainLayout";
-import { useAuth } from "@/context/AuthContext";
 
-interface Wine {
+interface WineSummary {
   id: number;
   name: string;
-  vintage?: string | null;
-  varietal?: string | null;
-  region?: string | null;
-  notes?: string | null;
+  category: "Sparkling" | "White" | "Red" | "Dessert";
+  byTheGlass: boolean;
+  stock: number;
+  par: number;
+  lastUsed: string;
+  notes?: string;
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
-  const [wines, setWines] = useState<Wine[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [wines, setWines] = useState<WineSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const API_BASE =
+    import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
 
   useEffect(() => {
-    const API_BASE =
-      import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
-
     const fetchWines = async () => {
       try {
-        setError(null);
-
-        const res = await fetch(`${API_BASE}/wines/`, {
-          credentials: "include",
-        });
-
-        if (!res.ok) {
-          throw new Error(`Failed to fetch wines (${res.status})`);
-        }
-
+        const res = await fetch(`${API_BASE}/wines/`);
+        if (!res.ok) throw new Error("Failed to load wines");
         const data = await res.json();
-        setWines(data);
-      } catch (err: any) {
-        console.error("Failed to fetch wines:", err);
-        setError(err?.message ?? "Failed to load wines");
+
+        const mapped: WineSummary[] = data.map((w: any) => ({
+          id: w.id,
+          name: w.name,
+          category: w.category,
+          byTheGlass: w.by_the_glass,
+          stock: w.current_stock ?? 0,
+          par: w.par_level ?? 0,
+          lastUsed: w.last_used_service ?? "—",
+          notes: w.notes ?? "",
+        }));
+
+        setWines(mapped);
+      } catch (err) {
+        console.error(err);
       } finally {
-        setLoading(false);
+        setIsLoading(false);
       }
     };
 
     fetchWines();
-  }, []);
+  }, [API_BASE]);
+
+  const totalByGlass = wines.filter((w) => w.byTheGlass).length;
+  const lowStock = wines.filter((w) => w.stock > 0 && w.stock <= (w.par || 0));
+  const outOfStock = wines.filter((w) => w.stock === 0);
 
   return (
     <MainLayout
-      title="Service Dashboard"
-      subtitle={`Welcome back, ${user?.username ?? "Guest"}`}
+      title="Tonight’s Overview"
+      subtitle="Quick snapshot of service and cellar at a glance"
     >
-      {/* Top summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div
-          className="rounded-xl p-6 shadow-lg"
-          style={{ backgroundColor: "#FEFEFE" }}
-        >
-          <p className="text-sm font-semibold" style={{ color: "#B89968" }}>
-            Total Wines
-          </p>
-          <p className="text-3xl font-bold mt-2" style={{ color: "#6B1F2F" }}>
-            {wines.length}
-          </p>
-        </div>
-
-        <div
-          className="rounded-xl p-6 shadow-lg"
-          style={{ backgroundColor: "#FEFEFE" }}
-        >
-          <p className="text-sm font-semibold" style={{ color: "#B89968" }}>
-            Active Tables
-          </p>
-          <p className="text-3xl font-bold mt-2" style={{ color: "#6B1F2F" }}>
-            0
-          </p>
-        </div>
-
-        <div
-          className="rounded-xl p-6 shadow-lg"
-          style={{ backgroundColor: "#FEFEFE" }}
-        >
-          <p className="text-sm font-semibold" style={{ color: "#B89968" }}>
-            User Role
+      {/* Top cards */}
+      <section className="grid gap-4 md:grid-cols-3 mb-6">
+        <div className="rounded-xl border border-[#E8D4B8] bg-[#FDF8F2] p-4 shadow-sm">
+          <p className="text-xs uppercase tracking-[0.16em] text-[#B08968] mb-1">
+            By-the-Glass List
           </p>
           <p
-            className="text-xl font-bold mt-2 capitalize"
-            style={{ color: "#6B1F2F" }}
+            className="text-2xl font-semibold text-[#4A1520]"
+            style={{ fontFamily: "Playfair Display, Georgia, serif" }}
           >
-            {user?.role ?? "Guest"}
+            {totalByGlass}
+          </p>
+          <p className="text-xs text-[#7B5A45] mt-1">
+            Wines currently marked as BTG
           </p>
         </div>
-      </div>
 
-      {/* Wine list */}
-      <div
-        className="rounded-xl shadow-lg p-6"
-        style={{ backgroundColor: "#FEFEFE" }}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2
-            className="text-2xl font-bold"
-            style={{
-              color: "#6B1F2F",
-              fontFamily: "Playfair Display, Georgia, serif",
-            }}
+        <div className="rounded-xl border border-[#E8D4B8] bg-[#FDF8F2] p-4 shadow-sm">
+          <p className="text-xs uppercase tracking-[0.16em] text-[#B08968] mb-1">
+            Low Stock Alerts
+          </p>
+          <p
+            className="text-2xl font-semibold text-[#4A1520]"
+            style={{ fontFamily: "Playfair Display, Georgia, serif" }}
           >
-            Wine Inventory Snapshot
-          </h2>
-          <span className="text-3xl">🍷</span>
+            {lowStock.length}
+          </p>
+          <p className="text-xs text-[#7B5A45] mt-1">
+            At or below par level – check before service
+          </p>
         </div>
 
-        {loading && (
-          <p className="text-sm" style={{ color: "#B89968" }}>
-            Loading wines…
+        <div className="rounded-xl border border-[#E8D4B8] bg-[#FDF8F2] p-4 shadow-sm">
+          <p className="text-xs uppercase tracking-[0.16em] text-[#B08968] mb-1">
+            86’d Wines
           </p>
-        )}
-
-        {error && <p className="text-sm text-red-600">{error}</p>}
-
-        {!loading && !error && wines.length === 0 && (
-          <p className="text-sm" style={{ color: "#B89968" }}>
-            No wines found yet.
+          <p
+            className="text-2xl font-semibold text-[#4A1520]"
+            style={{ fontFamily: "Playfair Display, Georgia, serif" }}
+          >
+            {outOfStock.length}
           </p>
-        )}
+          <p className="text-xs text-[#7B5A45] mt-1">
+            Update menus / FOH talking points
+          </p>
+        </div>
+      </section>
 
-        {!loading && !error && wines.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {wines.map((wine) => (
-              <div
-                key={wine.id}
-                className="border rounded-lg p-4 hover:shadow-md transition-shadow"
-                style={{ borderColor: "#D4AF88" }}
+      {/* Two-column layout */}
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)]">
+        {/* Recent / key wines table */}
+        <div className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#E8D4B8] flex items-center justify-between">
+            <div>
+              <h2
+                className="text-lg font-semibold text-[#4A1520]"
+                style={{ fontFamily: "Playfair Display, Georgia, serif" }}
               >
-                <div className="flex items-start justify-between mb-2">
-                  <h3
-                    className="font-bold text-lg"
-                    style={{ color: "#6B1F2F" }}
-                  >
-                    {wine.name}
-                  </h3>
-                  <span className="text-2xl">🍾</span>
-                </div>
-                <p className="text-sm mb-1" style={{ color: "#B89968" }}>
-                  <strong>Vintage:</strong> {wine.vintage ?? "N/A"}
-                </p>
-                <p className="text-sm mb-1" style={{ color: "#B89968" }}>
-                  <strong>Varietal:</strong> {wine.varietal ?? "N/A"}
-                </p>
-                <p className="text-sm mb-2" style={{ color: "#B89968" }}>
-                  <strong>Region:</strong> {wine.region ?? "N/A"}
-                </p>
-                {wine.notes && (
-                  <p
-                    className="text-xs italic mt-2 pt-2"
-                    style={{
-                      color: "#6B1F2F",
-                            borderTop: "1px solid #E8D4B8",
-                    }}
-                  >
-                    {wine.notes}
-                  </p>
-                )}
-              </div>
-            ))}
+                Cellar Focus
+              </h2>
+              <p className="text-xs text-[#7B5A45]">
+                Wines that matter most for tonight’s service
+              </p>
+            </div>
           </div>
-        )}
-      </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-[#F8EFE4]">
+                <tr className="text-left text-xs uppercase tracking-wide text-[#7B5A45]">
+                  <th className="px-4 py-2 font-semibold">Wine</th>
+                  <th className="px-4 py-2 font-semibold">Category</th>
+                  <th className="px-4 py-2 font-semibold">Stock</th>
+                  <th className="px-4 py-2 font-semibold">Par</th>
+                  <th className="px-4 py-2 font-semibold">BTG</th>
+                  <th className="px-4 py-2 font-semibold">Last Used</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-4 py-6 text-center text-xs text-[#7B5A45]"
+                    >
+                      Loading wines…
+                    </td>
+                  </tr>
+                )}
+
+                {!isLoading && wines.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-4 py-6 text-center text-xs text-[#7B5A45]"
+                    >
+                      No wines found yet. Add wines in the inventory section.
+                    </td>
+                  </tr>
+                )}
+
+                {!isLoading &&
+                  wines.map((wine) => {
+                    const isLow = wine.stock > 0 && wine.stock <= wine.par;
+                    const isOut = wine.stock === 0;
+
+                    return (
+                      <tr
+                        key={wine.id}
+                        className="border-t border-[#F0E0CF] hover:bg-[#FDF7F2]"
+                      >
+                        <td className="px-4 py-3 text-[#3B2620]">
+                          <div className="font-medium">{wine.name}</div>
+                          {wine.notes && (
+                            <div className="text-[11px] text-[#8A6852]">
+                              {wine.notes}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-[#7B5A45] whitespace-nowrap">
+                          {wine.category}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={[
+                              "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium",
+                              isOut
+                                ? "bg-[#FDE4E2] text-[#8E2525]"
+                                : isLow
+                                ? "bg-[#FFF4D6] text-[#8B5A12]"
+                                : "bg-[#E4F5E7] text-[#276749]",
+                            ].join(" ")}
+                          >
+                            {wine.stock}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-[#7B5A45]">
+                          {wine.par}
+                        </td>
+                        <td className="px-4 py-3 text-xs">
+                          {wine.byTheGlass ? (
+                            <span className="inline-flex px-2 py-0.5 rounded-full bg-[#6B1F2F] text-[#FDF7EE] text-[11px]">
+                              Yes
+                            </span>
+                          ) : (
+                            <span className="inline-flex px-2 py-0.5 rounded-full bg-[#E7D6CF] text-[#7B5A45] text-[11px]">
+                              Bottle
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-[#7B5A45] whitespace-nowrap">
+                          {wine.lastUsed || "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Right column: Tonight notes */}
+        <div className="space-y-4">
+          <div className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm p-4">
+            <h3
+              className="text-sm font-semibold text-[#4A1520] mb-2"
+              style={{ fontFamily: "Playfair Display, Georgia, serif" }}
+            >
+              Service Notes
+            </h3>
+            <ul className="text-xs text-[#7B5A45] space-y-1 list-disc pl-4">
+              <li>Confirm 86’d items with FOH before guests are seated.</li>
+              <li>
+                Walk the cellar once before service to double-check low stock.
+              </li>
+              <li>Align pairing suggestions for tonight’s tasting menu.</li>
+            </ul>
+          </div>
+
+          <div className="rounded-2xl bg-[#FDF8F2] border border-[#E8D4B8] shadow-sm p-4">
+            <h3
+              className="text-sm font-semibold text-[#4A1520] mb-2"
+              style={{ fontFamily: "Playfair Display, Georgia, serif" }}
+            >
+              Quick Links
+            </h3>
+            <div className="flex flex-col gap-2 text-xs">
+              <a
+                href="/service"
+                className="inline-flex items-center justify-between px-3 py-2 rounded-lg bg-[#6B1F2F] text-[#FDF7EE] hover:brightness-110 transition"
+              >
+                <span>Dinner Service View</span>
+                <span className="text-[10px] opacity-80">Tables & notes</span>
+              </a>
+              <a
+                href="/inventory"
+                className="inline-flex items-center justify-between px-3 py-2 rounded-lg bg-white text-[#4A1520] border border-[#E8D4B8] hover:bg-[#F8EFE4] transition"
+              >
+                <span>Manage Inventory</span>
+                <span className="text-[10px] text-[#7B5A45]">
+                  Counts, par levels, costs
+                </span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
     </MainLayout>
   );
 }

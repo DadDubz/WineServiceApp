@@ -1,111 +1,112 @@
 // src/layouts/MainLayout.tsx
-import { ReactNode } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import type { ReactNode } from "react";
+import { NavLink } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 
 interface MainLayoutProps {
-  children: ReactNode;
-  title?: string;
+  title: string;
   subtitle?: string;
+  children: ReactNode;
 }
 
-export default function MainLayout({
-  children,
-  title = "Wine Service",
-  subtitle = "Premium Wine Management System",
-}: MainLayoutProps) {
-  const { user, logout } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
+const navItems = [
+  { label: "Dashboard", to: "/" },
+  { label: "Dinner Service", to: "/service" },
+  { label: "Inventory", to: "/inventory" },
+];
 
-  const isActive = (path: string) =>
-    location.pathname === path
-      ? { backgroundColor: "#6B1F2F", color: "#FEFEFE" }
-      : { backgroundColor: "transparent", color: "#FCE8C8" };
+export default function MainLayout({ title, subtitle, children }: MainLayoutProps) {
+  const { user } = useAuth();
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#F8F5F0" }}>
-      {/* Header */}
-      <header className="shadow-md" style={{ backgroundColor: "#4A0E1E" }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">🍷</span>
-            <div>
-              <h1
-                className="text-2xl font-bold"
-                style={{
-                  color: "#FEFEFE",
-                  fontFamily: "Playfair Display, Georgia, serif",
-                }}
-              >
-                {title}
-              </h1>
-              <p className="text-xs" style={{ color: "#E8D4B8" }}>
-                {subtitle}
-              </p>
-            </div>
+    <div className="min-h-screen bg-[#F8F5F0] flex">
+      {/* Sidebar */}
+      <aside
+        className="hidden md:flex flex-col w-60 border-r border-[#E8D4B8] bg-[#FDF7EE]"
+        style={{ fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}
+      >
+        <div className="px-6 py-5 border-b border-[#E8D4B8]">
+          <div className="text-xs uppercase tracking-[0.2em] text-[#A2775B] mb-1">
+            Wellington &amp; Wild
           </div>
-
-          <div className="flex items-center gap-4 text-sm">
-            {user && (
-              <div className="text-right">
-                <p
-                  className="font-semibold"
-                  style={{ color: "#FCE8C8" }}
-                >{`${user.username} (${user.role})`}</p>
-              </div>
-            )}
-            <button
-              onClick={logout}
-              className="px-3 py-1 rounded-md text-xs font-semibold transition"
-              style={{
-                backgroundColor: "#D4AF88",
-                color: "#4A0E1E",
-              }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.backgroundColor = "#E8D4B8")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.backgroundColor = "#D4AF88")
-              }
-            >
-              Logout
-            </button>
+          <div className="text-lg font-semibold text-[#4A1520]">
+            Wine Service App
           </div>
         </div>
 
-        {/* Nav */}
-        <nav className="border-t border-[#7B3042]/40">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex gap-2 text-xs sm:text-sm">
-            <button
-              onClick={() => navigate("/")}
-              className="px-3 py-1 rounded-full border border-[#FCE8C8]/40"
-              style={isActive("/")}
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === "/"}
+              className={({ isActive }) =>
+                [
+                  "flex items-center px-3 py-2 rounded-lg text-sm transition",
+                  isActive
+                    ? "bg-[#6B1F2F] text-[#FDF7EE] shadow-sm"
+                    : "text-[#5A4337] hover:bg-[#F0E0CF]",
+                ].join(" ")
+              }
             >
-              Dashboard
-            </button>
-            <button
-              onClick={() => navigate("/inventory")}
-              className="px-3 py-1 rounded-full border border-[#FCE8C8]/40"
-              style={isActive("/inventory")}
-            >
-              Wine Inventory
-            </button>
-            <button
-              onClick={() => navigate("/service")}
-              className="px-3 py-1 rounded-full border border-[#FCE8C8]/40"
-              style={isActive("/service")}
-            >
-              Dinner Service
-            </button>
-          </div>
+              <span className="w-1.5 h-1.5 rounded-full mr-2 bg-current" />
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
         </nav>
-      </header>
 
-      {/* Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {children}
-      </main>
+        <div className="px-4 py-4 border-t border-[#E8D4B8] text-xs text-[#7B5A45]">
+          <div className="font-semibold text-[#4A1520] mb-1">Signed in</div>
+          <div className="truncate">{user?.email ?? "Sommelier"}</div>
+        </div>
+      </aside>
+
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col">
+        {/* Top bar on mobile + subtle header bar on desktop */}
+        <header className="h-14 px-4 md:px-8 flex items-center justify-between border-b border-[#E8D4B8] bg-[#FDF7EE]/80 backdrop-blur">
+          <div className="md:hidden">
+            <div className="text-xs uppercase tracking-[0.2em] text-[#A2775B]">
+              Wellington &amp; Wild
+            </div>
+            <div className="text-sm font-semibold text-[#4A1520]">
+              Wine Service App
+            </div>
+          </div>
+          <div className="hidden md:flex items-baseline gap-3">
+            <h1
+              className="text-xl font-semibold text-[#4A1520]"
+              style={{ fontFamily: "Playfair Display, Georgia, serif" }}
+            >
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="text-xs text-[#82614B] mt-0.5">{subtitle}</p>
+            )}
+          </div>
+
+          <div className="text-xs text-[#7B5A45]">
+            {user?.email && <span>{user.email}</span>}
+          </div>
+        </header>
+
+        {/* Page header (mobile) + content */}
+        <main className="flex-1 px-4 md:px-8 py-5 md:py-6">
+          <div className="md:hidden mb-4">
+            <h1
+              className="text-xl font-semibold text-[#4A1520]"
+              style={{ fontFamily: "Playfair Display, Georgia, serif" }}
+            >
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="text-xs text-[#82614B] mt-1">{subtitle}</p>
+            )}
+          </div>
+
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

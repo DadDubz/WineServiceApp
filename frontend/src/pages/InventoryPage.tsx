@@ -5,31 +5,26 @@ export default function InventoryPage() {
   return (
     <MainLayout
       title="Wine Inventory"
-      subtitle="Cellar overview and bottle tracking"
+      subtitle="Cellar overview, counts and costing (coming soon)"
     >
-      <div
-        className="rounded-xl shadow-lg p-6"
-        style={{ backgroundColor: "#FEFEFE" }}
-      >
+      <div className="rounded-2xl border border-[#E8D4B8] bg-white/90 shadow-sm p-6">
         <h2
-          className="text-2xl font-bold mb-4"
-          style={{
-            color: "#6B1F2F",
-            fontFamily: "Playfair Display, Georgia, serif",
-          }}
+          className="text-lg font-semibold mb-3 text-[#4A1520]"
+          style={{ fontFamily: "Playfair Display, Georgia, serif" }}
         >
-          Inventory (coming next)
+          Inventory module coming next
         </h2>
-        <p className="text-sm text-gray-700 mb-4">
-          This screen will show all wines with counts, par levels, and cost/sell
-          pricing. For now, it’s just a placeholder while we get the Dinner
-          Service screen dialed in.
+        <p className="text-sm text-[#7B5A45] mb-4">
+          This screen will show all wines with current stock, par levels,
+          cost-per-bottle and sell price. After service you can adjust counts
+          and automatically calculate usage and cost of goods.
         </p>
 
-        <ul className="text-sm text-gray-700 list-disc pl-5 space-y-1">
-          <li>Wine list by category (sparkling, white, red, dessert).</li>
-          <li>Search and filters by region / varietal / vintage.</li>
-          <li>Ability to adjust counts after service.</li>
+        <ul className="text-sm text-[#7B5A45] list-disc pl-5 space-y-1">
+          <li>Filter by category (sparkling, white, red, dessert).</li>
+          <li>Track by-the-glass vs bottle-only SKUs.</li>
+          <li>Flag low or out-of-stock wines automatically.</li>
+          <li>Export nightly usage reports for management.</li>
         </ul>
       </div>
     </MainLayout>

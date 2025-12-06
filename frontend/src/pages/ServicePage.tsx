@@ -127,75 +127,126 @@ export default function ServicePage() {
       title="Dinner Service"
       subtitle="Tables, guests, wines, and special notes"
     >
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1.6fr)]">
         {/* Tables list */}
-        <div
-          className="rounded-xl shadow-lg p-4 lg:col-span-1"
-          style={{ backgroundColor: "#FEFEFE" }}
-        >
-          <h2
-            className="text-lg font-semibold mb-3"
-            style={{
-              color: "#6B1F2F",
-              fontFamily: "Playfair Display, Georgia, serif",
-            }}
-          >
-            Tonight&apos;s Tables
-          </h2>
-          <div className="space-y-2">
+        <aside className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-[#E8D4B8] flex items-center justify-between">
+            <div>
+              <h2
+                className="text-sm font-semibold text-[#4A1520]"
+                style={{ fontFamily: "Playfair Display, Georgia, serif" }}
+              >
+                Tonight&apos;s Tables
+              </h2>
+              <p className="text-[11px] text-[#7B5A45] mt-0.5">
+                Tap a table to view and update details
+              </p>
+            </div>
+            <span className="text-[11px] text-[#7B5A45]">
+              {tables.length} seated
+            </span>
+          </div>
+
+          <div className="divide-y divide-[#F0E0CF]">
             {tables.map((table) => {
               const isActive = table.id === selectedId;
+              const hasAllergy = !!table.allergies.trim();
+              const hasAddOn =
+                table.addOns.cheeseBoard ||
+                table.addOns.sparklingWater ||
+                table.addOns.dessertWine;
+
               return (
                 <button
                   key={table.id}
                   onClick={() => setSelectedId(table.id)}
-                  className="w-full text-left rounded-lg px-3 py-2 border transition flex justify-between items-center"
-                  style={{
-                    borderColor: isActive ? "#6B1F2F" : "#E8D4B8",
-                    backgroundColor: isActive ? "#6B1F2F" : "#FEFEFE",
-                    color: isActive ? "#FEFEFE" : "#4A0E1E",
-                  }}
+                  className={[
+                    "w-full text-left px-4 py-3 transition flex flex-col gap-1",
+                    isActive
+                      ? "bg-[#6B1F2F] text-[#FDF7EE]"
+                      : "hover:bg-[#FDF8F2] text-[#3B2620]",
+                  ].join(" ")}
                 >
-                  <div>
-                    <div className="text-sm font-semibold">
-                      Table {table.tableNumber}
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold">
+                        {table.tableNumber}
+                      </div>
+                      <div
+                        className={
+                          isActive
+                            ? "text-[11px] opacity-90"
+                            : "text-[11px] text-[#7B5A45]"
+                        }
+                      >
+                        {table.roomNumber || "No room #"} • {table.guestsCount}{" "}
+                        {table.guestsCount === 1 ? "guest" : "guests"}
+                      </div>
                     </div>
-                    <div className="text-xs opacity-80">
-                      {table.roomNumber || "No room #"} • {table.guestsCount}{" "}
-                      guests
+                    <div className="text-right">
+                      <div className="text-[11px] font-medium truncate max-w-[100px]">
+                        {table.guestName || "Guest"}
+                      </div>
+                      <div className="flex flex-wrap gap-1 justify-end mt-1">
+                        {hasAllergy && (
+                          <span
+                            className={[
+                              "text-[10px] px-2 py-0.5 rounded-full",
+                              isActive
+                                ? "bg-[#FDE4E2] text-[#8E2525]"
+                                : "bg-[#FDEBE8] text-[#8E2525]",
+                            ].join(" ")}
+                          >
+                            Allergy
+                          </span>
+                        )}
+                        {hasAddOn && (
+                          <span
+                            className={[
+                              "text-[10px] px-2 py-0.5 rounded-full",
+                              isActive
+                                ? "bg-[#FFF4D6] text-[#8B5A12]"
+                                : "bg-[#FFF8E3] text-[#8B5A12]",
+                            ].join(" ")}
+                          >
+                            Add-ons
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-xs opacity-80">
-                    {table.guestName || "Guest"}
                   </div>
                 </button>
               );
             })}
           </div>
-        </div>
+        </aside>
 
         {/* Detail / form */}
-        <div
-          className="rounded-xl shadow-lg p-6 lg:col-span-2"
-          style={{ backgroundColor: "#FEFEFE" }}
-        >
+        <section className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm p-5">
           {selectedTable ? (
             <>
-              <h2
-                className="text-xl font-bold mb-4"
-                style={{
-                  color: "#6B1F2F",
-                  fontFamily: "Playfair Display, Georgia, serif",
-                }}
-              >
-                Table {selectedTable.tableNumber} •{" "}
-                {selectedTable.roomNumber || "No room #"}
-              </h2>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              {/* Header */}
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#F0E0CF] pb-3 mb-4">
                 <div>
-                  <label className="block text-xs font-semibold mb-1 text-gray-700">
-                    Guest / Party Name
+                  <h2
+                    className="text-lg font-semibold text-[#4A1520]"
+                    style={{ fontFamily: "Playfair Display, Georgia, serif" }}
+                  >
+                    {selectedTable.tableNumber}
+                  </h2>
+                  <p className="text-xs text-[#7B5A45] mt-0.5">
+                    {selectedTable.roomNumber || "No room #"} •{" "}
+                    {selectedTable.guestsCount}{" "}
+                    {selectedTable.guestsCount === 1 ? "guest" : "guests"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Guest & room info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">
+                    Guest / party name
                   </label>
                   <input
                     type="text"
@@ -203,13 +254,12 @@ export default function ServicePage() {
                     onChange={(e) =>
                       updateSelected({ guestName: e.target.value })
                     }
-                    className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
-                    style={{ borderColor: "#D4AF88" }}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold mb-1 text-gray-700">
-                    Room Number
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">
+                    Room / cabin
                   </label>
                   <input
                     type="text"
@@ -217,16 +267,15 @@ export default function ServicePage() {
                     onChange={(e) =>
                       updateSelected({ roomNumber: e.target.value })
                     }
-                    className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
-                    style={{ borderColor: "#D4AF88" }}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
                   />
                 </div>
               </div>
 
               {/* Drinks & add-ons */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
                 <div>
-                  <label className="block text-xs font-semibold mb-1 text-gray-700">
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">
                     What they had to drink
                   </label>
                   <textarea
@@ -234,17 +283,16 @@ export default function ServicePage() {
                     onChange={(e) =>
                       updateSelected({ drinks: e.target.value })
                     }
-                    className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
                     rows={3}
-                    placeholder="E.g., 2x Pinot Noir by the glass, 1x Champagne aperitif…"
-                    style={{ borderColor: "#D4AF88" }}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                    placeholder="E.g., 2x Pinot Noir BTG, 1x Champagne, 1x amaro…"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold mb-2 text-gray-700">
+                  <label className="block text-xs font-semibold mb-2 text-[#7B5A45]">
                     Add-ons
                   </label>
-                  <div className="space-y-2 text-sm text-gray-800">
+                  <div className="space-y-2 text-sm text-[#3B2620]">
                     <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
@@ -273,25 +321,24 @@ export default function ServicePage() {
                 </div>
               </div>
 
-              {/* Allergies, substitutions */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              {/* Allergies & substitutions */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
                 <div>
-                  <label className="block text-xs font-semibold mb-1 text-gray-700">
-                    Allergies
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">
+                    Allergies / restrictions
                   </label>
                   <textarea
                     value={selectedTable.allergies}
                     onChange={(e) =>
                       updateSelected({ allergies: e.target.value })
                     }
-                    className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
                     rows={2}
-                    placeholder="E.g., no nuts, lactose-intolerant…"
-                    style={{ borderColor: "#D4AF88" }}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                    placeholder="E.g., no nuts, lactose intolerant, no garlic…"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold mb-1 text-gray-700">
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">
                     Substitutions
                   </label>
                   <textarea
@@ -299,18 +346,17 @@ export default function ServicePage() {
                     onChange={(e) =>
                       updateSelected({ substitutions: e.target.value })
                     }
-                    className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
                     rows={2}
-                    placeholder="E.g., no onion, side salad instead of potatoes…"
-                    style={{ borderColor: "#D4AF88" }}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                    placeholder="E.g., no onion, side salad instead of potato…"
                   />
                 </div>
               </div>
 
-              {/* Protein + notes */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              {/* Protein + service notes */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-xs font-semibold mb-1 text-gray-700">
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">
                     Protein doneness
                   </label>
                   <select
@@ -320,8 +366,7 @@ export default function ServicePage() {
                         protein: e.target.value as ProteinDoneness,
                       })
                     }
-                    className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
-                    style={{ borderColor: "#D4AF88" }}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
                   >
                     <option value="n/a">N/A</option>
                     <option value="rare">Rare</option>
@@ -332,7 +377,7 @@ export default function ServicePage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold mb-1 text-gray-700">
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">
                     Service notes
                   </label>
                   <textarea
@@ -340,25 +385,24 @@ export default function ServicePage() {
                     onChange={(e) =>
                       updateSelected({ notes: e.target.value })
                     }
-                    className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
                     rows={2}
-                    placeholder="Anything you want FOH/BOH to remember about this table."
-                    style={{ borderColor: "#D4AF88" }}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                    placeholder="Pacing, special occasions, pairing notes, etc."
                   />
                 </div>
               </div>
 
-              <p className="text-xs text-gray-500">
-                (Later we can wire this to the backend so every change saves
-                automatically for the night&apos;s service log.)
+              <p className="text-[11px] text-[#7B5A45] mt-1">
+                Later we can sync this view with a backend service log so every
+                change is saved for the night.
               </p>
             </>
           ) : (
-            <p className="text-sm text-gray-700">
-              Select a table on the left to view or edit details.
+            <p className="text-sm text-[#7B5A45]">
+              Select a table on the left to view or edit its details.
             </p>
           )}
-        </div>
+        </section>
       </div>
     </MainLayout>
   );

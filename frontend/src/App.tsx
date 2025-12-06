@@ -1,5 +1,5 @@
 // src/App.tsx
-import { Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 
 import LoginPage from "@/pages/LoginPage";
@@ -13,11 +13,13 @@ function AppRoutes() {
 
   return (
     <Routes>
+      {/* Public login route */}
       <Route
         path="/login"
         element={!user ? <LoginPage /> : <Navigate to="/" replace />}
       />
 
+      {/* Dashboard (default) */}
       <Route
         path="/"
         element={
@@ -27,6 +29,7 @@ function AppRoutes() {
         }
       />
 
+      {/* Inventory */}
       <Route
         path="/inventory"
         element={
@@ -36,6 +39,7 @@ function AppRoutes() {
         }
       />
 
+      {/* Service */}
       <Route
         path="/service"
         element={
@@ -45,6 +49,7 @@ function AppRoutes() {
         }
       />
 
+      {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -52,8 +57,10 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppRoutes />
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
