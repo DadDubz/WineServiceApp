@@ -11,9 +11,10 @@ class Table(Base):
     name = Column(String, nullable=True)
     number = Column(String, nullable=False)
     server = Column(String, nullable=True)
-    guests = Column(Integer, default=0)
-    status = Column(String, default="Seated")
-    courses_json = Column(Text, default="[]")
+    capacity = Column(Integer, default=4)
+    status = Column(String, default="Available")  # Available, Occupied, Reserved, Cleaning
+    notes = Column(Text, nullable=True)
     
     # Relationships
     service_logs = relationship("ServiceLog", back_populates="table")
+    guests = relationship("Guest", back_populates="table", cascade="all, delete-orphan")

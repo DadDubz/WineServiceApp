@@ -1,54 +1,92 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-import json
+from pydantic import BaseModel
+from typing import List
 
-from app import models
-from app.routes.auth import get_current_user
+from app.models.table import Table
+from app.models.guest import Guest
 from app.db import get_db
-from app.schemas.schemas import TableCreate, TableOut, Course
 
-router = APIRouter(prefix="/tables", tags=["Tables"])
+router = APIRouter(prefix="/tables")
 
-@router.get("/", response_model=list[TableOut])
+# Schemas
+class TableCreate(BaseModel):
+    number: str
+    name: str | None = None
+    capacity: int = 4
+    server: str | None = None
+    status: str = "Available"
+    notes: str | None = None
+
+class GuestSummary(BaseModel):
+    id: int
+    name: str
+    room_number: str | None
+    
+    class Config:
+        from_attributes = True
+
+class TableResponse(BaseModel):
+    id: int
+    number: str
+    name: str | None
+    capacity: int
+    server: str | None
+    status: str
+    notes: str | None
+    guests: List[GuestSummary] = []
+    
+    class Config:
+        from_attributes = True
+
+@router.get("/")
 def get_tables(db: Session = Depends(get_db)):
-    tables = db.query(models.Table).all()
-    return [convert_table(t) for t in tables]
+    """Get all tables with their guests"""
+    tables = db.query(Table).all()
+    return [
+        {
+            "id": t.id,
+            "number": t.number,
+            "name": t.name,
+            "capacity": t.capacity,
+            "server": t.server,
+            "status": t.status,
+            "notes": t.notes,
+            "guests": [{"id": g.id, "name": g.name, "room_number": g.room_number} for g in t.guests]
+        }
+        for t in tables
+    ]
 
-@router.post("/", response_model=TableOut)
-def seat_table(table: TableCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    new_table = models.Table(
-        number=table.number,
-        server=table.server,
-        guests=table.guests,
-        status=table.status,
-        courses_json="[]"
-    )
-    db.add(new_table)
+@router.post("/", response_model=TableResponse)
+def create_table(table_data: TableCreate, db: Session = Depends(get_db)):
+    """Create a new table"""
+    table = Table(**table_data.model_dump())
+    db.add(table)
     db.commit()
-    db.refresh(new_table)
-    return convert_table(new_table)
+    db.refresh(table)
+    return table
 
-@router.post("/{table_id}/courses", response_model=Course)
-def add_course(table_id: int, course: Course, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    table = db.query(models.Table).filter_by(id=table_id).first()
+@router.put("/{table_id}")
+def update_table(table_id: int, table_data: TableCreate, db: Session = Depends(get_db)):
+    """Update a table"""
+    table = db.query(Table).filter(Table.id == table_id).first()
     if not table:
         raise HTTPException(status_code=404, detail="Table not found")
-
-    courses = json.loads(table.courses_json)
-    courses.append(course.dict())
-    table.courses_json = json.dumps(courses)
-
+    
+    for key, value in table_data.model_dump().items():
+        setattr(table, key, value)
+    
     db.commit()
-    return course
+    db.refresh(table)
+    return table
 
-
-def convert_table(table: models.Table):
-    courses = json.loads(table.courses_json or "[]")
-    return {
-        "id": table.id,
-        "number": table.number,
-        "server": table.server,
-        "guests": table.guests,
-        "status": table.status,
-        "courses": courses,
-    }
+@router.delete("/{table_id}")
+def delete_table(table_id: int, db: Session = Depends(get_db)):
+    """Delete a table"""
+    table = db.query(Table).filter(Table.id == table_id).first()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    
+    db.delete(table)
+    db.commit()
+    return {"message": "Table deleted"}

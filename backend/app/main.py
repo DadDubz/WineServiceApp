@@ -8,6 +8,8 @@ from pathlib import Path
 from app.routes.auth import router as auth_router
 from app.routes.wines import router as wines_router
 from app.routes.tables import router as tables_router
+from app.routes.guests import router as guests_router
+from app.routes.orders import router as orders_router
 
 app = FastAPI()
 
@@ -15,21 +17,8 @@ app = FastAPI()
 app_url = os.environ.get("APP_URL", "")
 frontend_url = app_url if app_url else "http://localhost:5173"
 
-# Allowed origins for CORS
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://wine-service-demo.preview.emergentagent.com",
-]
-
-# Add production URL if available
-if app_url and app_url not in origins:
-    origins.append(app_url)
-
-# Allow all preview subdomains
-origins.append("https://*.preview.emergentagent.com")
+# Allowed origins for CORS - allow all for development/preview
+origins = ["*"]  # Allow all origins for preview environment
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,6 +32,8 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(wines_router, prefix="/api")
 app.include_router(tables_router, prefix="/api")
+app.include_router(guests_router, prefix="/api")
+app.include_router(orders_router, prefix="/api")
 
 
 # Health check
