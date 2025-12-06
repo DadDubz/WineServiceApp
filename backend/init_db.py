@@ -123,6 +123,38 @@ def seed_wines():
     finally:
         db.close()
 
+def seed_tables():
+    """Create demo tables"""
+    db = SessionLocal()
+    try:
+        # Check if tables already exist
+        existing = db.query(Table).first()
+        if existing:
+            print("✓ Tables already seeded")
+            return
+
+        demo_tables = [
+            {"number": "1", "name": "Table 1", "capacity": 4, "status": "Available", "server": "John"},
+            {"number": "2", "name": "Table 2", "capacity": 2, "status": "Available", "server": "Sarah"},
+            {"number": "3", "name": "Table 3", "capacity": 6, "status": "Available", "server": "Mike"},
+            {"number": "4", "name": "Table 4", "capacity": 4, "status": "Available", "server": "Emma"},
+            {"number": "5", "name": "Table 5", "capacity": 8, "status": "Available", "server": "John"},
+        ]
+
+        for table_data in demo_tables:
+            table = Table(**table_data)
+            db.add(table)
+            print(f"✓ Added table: {table_data['number']} (Capacity: {table_data['capacity']})")
+
+        db.commit()
+        print("✓ All tables seeded successfully")
+
+    except Exception as e:
+        print(f"✗ Error seeding tables: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 if __name__ == "__main__":
     print("=" * 50)
     print("Wine Service Database Initialization")
@@ -131,6 +163,7 @@ if __name__ == "__main__":
     init_database()
     seed_users()
     seed_wines()
+    seed_tables()
     
     print("=" * 50)
     print("✓ Database initialization complete!")
