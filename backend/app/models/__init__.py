@@ -6,3 +6,5 @@ from .wine import Wine
 from .table import Table
 from .service_log import ServiceLog
 from .inventory import InventoryItem
+from .guest import Guest
+from .order import Order
