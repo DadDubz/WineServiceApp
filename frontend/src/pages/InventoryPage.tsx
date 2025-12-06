@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 // src/pages/InventoryPage.tsx
 import MainLayout from "@/layouts/MainLayout";
 
@@ -193,4 +192,3 @@ const InventoryPage = () => {
 };
 
 export default InventoryPage;
->>>>>>> 4848a43c7cbead93e46594932b9b7a5f7063185a
