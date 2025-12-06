@@ -36,49 +36,8 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#F8F5F0' }}>
-      {/* Header */}
-      <header 
-        className="shadow-md"
-        style={{ backgroundColor: '#6B1F2F' }}
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-3">
-              <span className="text-3xl">🍷</span>
-              <div>
-                <h1 
-                  className="text-2xl font-bold"
-                  style={{ 
-                    color: '#FEFEFE',
-                    fontFamily: 'Playfair Display, Georgia, serif'
-                  }}
-                >
-                  Wine Service Dashboard
-                </h1>
-                <p className="text-sm" style={{ color: '#E8D4B8' }}>
-                  Welcome back, {user?.username || 'Guest'}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 rounded-lg font-semibold transition-all"
-              style={{ 
-                backgroundColor: '#D4AF88',
-                color: '#6B1F2F'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#E8D4B8'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#D4AF88'}
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <Layout>
+      <div>
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div 
