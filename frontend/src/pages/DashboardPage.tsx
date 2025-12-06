@@ -1,11 +1,12 @@
 // src/pages/DashboardPage.tsx
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import Layout from '@/components/Layout';
 
 export default function DashboardPage() {
-  const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
   const [wines, setWines] = useState<any[]>([]);
+  const [tables, setTables] = useState<any[]>([]);
+  const [guests, setGuests] = useState<any[]>([]);
 
   useEffect(() => {
     // Get user from localStorage
@@ -14,18 +15,24 @@ export default function DashboardPage() {
       setUser(JSON.parse(userStr));
     }
 
-    // Fetch wines
-    const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-    fetch(`${API_BASE}/wines/`)
-      .then(res => res.json())
-      .then(data => setWines(data))
-      .catch(err => console.error('Failed to fetch wines:', err));
+    // Fetch data
+    fetchDashboardData();
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/login');
+  const fetchDashboardData = async () => {
+    const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+    try {
+      const [winesRes, tablesRes, guestsRes] = await Promise.all([
+        fetch(`${API_BASE}/wines/`),
+        fetch(`${API_BASE}/tables/`),
+        fetch(`${API_BASE}/guests/`),
+      ]);
+      setWines(await winesRes.json());
+      setTables(await tablesRes.json());
+      setGuests(await guestsRes.json());
+    } catch (err) {
+      console.error('Failed to fetch dashboard data:', err);
+    }
   };
 
   return (
