@@ -32,6 +32,8 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(wines_router, prefix="/api")
 app.include_router(tables_router, prefix="/api")
+app.include_router(guests_router, prefix="/api")
+app.include_router(orders_router, prefix="/api")
 
 
 # Health check
