@@ -1,5 +1,7 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+// src/App.tsx
+import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+
 import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -12,7 +14,7 @@ function AppRoutes() {
       {/* Login route */}
       <Route
         path="/login"
-        element={user ? <Navigate to="/" replace /> : <LoginPage />}
+        element={!user ? <LoginPage /> : <Navigate to="/" replace />}
       />
 
       {/* Protected dashboard at "/" */}
@@ -25,7 +27,7 @@ function AppRoutes() {
         }
       />
 
-      {/* Fallback */}
+      {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -34,9 +36,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <AppRoutes />
     </AuthProvider>
   );
 }
