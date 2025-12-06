@@ -8,6 +8,8 @@ from pathlib import Path
 from app.routes.auth import router as auth_router
 from app.routes.wines import router as wines_router
 from app.routes.tables import router as tables_router
+from app.routes.guests import router as guests_router
+from app.routes.orders import router as orders_router
 
 app = FastAPI()
 
