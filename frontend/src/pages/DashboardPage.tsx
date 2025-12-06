@@ -6,36 +6,41 @@ import { useAuth } from "@/context/AuthContext";
 interface Wine {
   id: number;
   name: string;
-  vintage?: string;
-  varietal?: string;
-  region?: string;
-  notes?: string;
+  vintage?: string | null;
+  varietal?: string | null;
+  region?: string | null;
+  notes?: string | null;
 }
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const [wines, setWines] = useState<Wine[]>([]);
-  const [loadingWines, setLoadingWines] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const API_BASE =
       import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
 
-<<<<<<< HEAD
     const fetchWines = async () => {
       try {
+        setError(null);
+
         const res = await fetch(`${API_BASE}/wines/`, {
-          headers: {
-            "Content-Type": "application/json",
-          },
+          credentials: "include",
         });
-        if (!res.ok) return;
+
+        if (!res.ok) {
+          throw new Error(`Failed to fetch wines (${res.status})`);
+        }
+
         const data = await res.json();
         setWines(data);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to fetch wines:", err);
+        setError(err?.message ?? "Failed to load wines");
       } finally {
-        setLoadingWines(false);
+        setLoading(false);
       }
     };
 
@@ -44,10 +49,10 @@ export default function DashboardPage() {
 
   return (
     <MainLayout
-      title="Wine Service Dashboard"
-      subtitle="Tonight's overview at a glance"
+      title="Service Dashboard"
+      subtitle={`Welcome back, ${user?.username ?? "Guest"}`}
     >
-      {/* Top stats */}
+      {/* Top summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div
           className="rounded-xl p-6 shadow-lg"
@@ -56,11 +61,8 @@ export default function DashboardPage() {
           <p className="text-sm font-semibold" style={{ color: "#B89968" }}>
             Total Wines
           </p>
-          <p
-            className="text-3xl font-bold mt-2"
-            style={{ color: "#6B1F2F" }}
-          >
-            {loadingWines ? "…" : wines.length}
+          <p className="text-3xl font-bold mt-2" style={{ color: "#6B1F2F" }}>
+            {wines.length}
           </p>
         </div>
 
@@ -71,10 +73,7 @@ export default function DashboardPage() {
           <p className="text-sm font-semibold" style={{ color: "#B89968" }}>
             Active Tables
           </p>
-          <p
-            className="text-3xl font-bold mt-2"
-            style={{ color: "#6B1F2F" }}
-          >
+          <p className="text-3xl font-bold mt-2" style={{ color: "#6B1F2F" }}>
             0
           </p>
         </div>
@@ -90,178 +89,85 @@ export default function DashboardPage() {
             className="text-xl font-bold mt-2 capitalize"
             style={{ color: "#6B1F2F" }}
           >
-            {user?.role || "Guest"}
+            {user?.role ?? "Guest"}
           </p>
         </div>
       </div>
 
-      {/* Quick cards / shortcuts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div
-          className="rounded-xl p-6 shadow-lg"
-          style={{ backgroundColor: "#FEFEFE" }}
-        >
+      {/* Wine list */}
+      <div
+        className="rounded-xl shadow-lg p-6"
+        style={{ backgroundColor: "#FEFEFE" }}
+      >
+        <div className="flex items-center justify-between mb-4">
           <h2
-            className="text-lg font-semibold mb-2"
+            className="text-2xl font-bold"
             style={{
               color: "#6B1F2F",
               fontFamily: "Playfair Display, Georgia, serif",
             }}
           >
-            Tonight’s Focus
+            Wine Inventory Snapshot
           </h2>
-          <p className="text-sm text-gray-700">
-            Use the top navigation to jump into Wine Inventory or Dinner
-            Service. This dashboard will grow into your nightly summary: bottle
-            counts, most-poured wines, and guest experience notes.
+          <span className="text-3xl">🍷</span>
+        </div>
+
+        {loading && (
+          <p className="text-sm" style={{ color: "#B89968" }}>
+            Loading wines…
           </p>
-        </div>
+        )}
 
-        <div
-          className="rounded-xl p-6 shadow-lg"
-          style={{ backgroundColor: "#FEFEFE" }}
-        >
-          <h2
-            className="text-lg font-semibold mb-2"
-            style={{
-              color: "#6B1F2F",
-              fontFamily: "Playfair Display, Georgia, serif",
-            }}
-          >
-            Service Highlights
-          </h2>
-          <ul className="text-sm text-gray-700 list-disc pl-5 space-y-1">
-            <li>Track guest wine choices and add-ons in Dinner Service.</li>
-            <li>Log allergies and substitutions for future visits.</li>
-            <li>Keep wine inventory aligned with what is moving on the floor.</li>
-          </ul>
-        </div>
-      </div>
-    </MainLayout>
-=======
-    // Fetch data
-    fetchDashboardData();
-  }, []);
+        {error && <p className="text-sm text-red-600">{error}</p>}
 
-  const fetchDashboardData = async () => {
-    const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-    try {
-      const [winesRes, tablesRes, guestsRes] = await Promise.all([
-        fetch(`${API_BASE}/wines/`),
-        fetch(`${API_BASE}/tables/`),
-        fetch(`${API_BASE}/guests/`),
-      ]);
-      setWines(await winesRes.json());
-      setTables(await tablesRes.json());
-      setGuests(await guestsRes.json());
-    } catch (err) {
-      console.error('Failed to fetch dashboard data:', err);
-    }
-  };
-
-  return (
-    <Layout>
-      <div>
-        {/* Welcome Header */}
-        <div style={{ marginBottom: '32px' }}>
-          <h1 style={{ fontSize: '32px', fontWeight: '700', color: '#6B1F2F', fontFamily: 'Playfair Display, Georgia, serif', marginBottom: '8px' }}>
-            Welcome, {user?.username || 'Guest'}!
-          </h1>
-          <p style={{ color: '#B89968', fontSize: '16px' }}>
-            Here's your service overview for today
+        {!loading && !error && wines.length === 0 && (
+          <p className="text-sm" style={{ color: "#B89968" }}>
+            No wines found yet.
           </p>
-        </div>
+        )}
 
-        {/* Stats Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '32px' }}>
-          <div style={{ backgroundColor: '#FEFEFE', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #E8D4B8' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <p style={{ fontSize: '14px', fontWeight: '600', color: '#B89968', marginBottom: '8px' }}>
-                  Total Wines
-                </p>
-                <p style={{ fontSize: '36px', fontWeight: '700', color: '#6B1F2F' }}>
-                  {wines.length}
-                </p>
-              </div>
-              <div style={{ fontSize: '48px' }}>🍾</div>
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: '#FEFEFE', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #E8D4B8' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <p style={{ fontSize: '14px', fontWeight: '600', color: '#B89968', marginBottom: '8px' }}>
-                  Tables
-                </p>
-                <p style={{ fontSize: '36px', fontWeight: '700', color: '#6B1F2F' }}>
-                  {tables.length}
-                </p>
-              </div>
-              <div style={{ fontSize: '48px' }}>🍽️</div>
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: '#FEFEFE', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #E8D4B8' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <p style={{ fontSize: '14px', fontWeight: '600', color: '#B89968', marginBottom: '8px' }}>
-                  Guests
-                </p>
-                <p style={{ fontSize: '36px', fontWeight: '700', color: '#6B1F2F' }}>
-                  {guests.length}
-                </p>
-              </div>
-              <div style={{ fontSize: '48px' }}>👥</div>
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: '#FEFEFE', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #E8D4B8' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <p style={{ fontSize: '14px', fontWeight: '600', color: '#B89968', marginBottom: '8px' }}>
-                  Your Role
-                </p>
-                <p style={{ fontSize: '24px', fontWeight: '700', color: '#6B1F2F', textTransform: 'capitalize' }}>
-                  {user?.role || 'Guest'}
-                </p>
-              </div>
-              <div style={{ fontSize: '48px' }}>👤</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Overview */}
-        <div style={{ backgroundColor: '#FEFEFE', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #E8D4B8' }}>
-          <h2 style={{ fontSize: '22px', fontWeight: '700', color: '#6B1F2F', fontFamily: 'Playfair Display, Georgia, serif', marginBottom: '16px' }}>
-            Recent Wines
-          </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-            {wines.slice(0, 3).map((wine) => (
+        {!loading && !error && wines.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {wines.map((wine) => (
               <div
                 key={wine.id}
-                style={{
-                  padding: '16px',
-                  borderRadius: '8px',
-                  border: '1px solid #E8D4B8',
-                  backgroundColor: '#F8F5F0',
-                }}
+                className="border rounded-lg p-4 hover:shadow-md transition-shadow"
+                style={{ borderColor: "#D4AF88" }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#6B1F2F' }}>
+                <div className="flex items-start justify-between mb-2">
+                  <h3
+                    className="font-bold text-lg"
+                    style={{ color: "#6B1F2F" }}
+                  >
                     {wine.name}
                   </h3>
-                  <span style={{ fontSize: '24px' }}>🍷</span>
+                  <span className="text-2xl">🍾</span>
                 </div>
-                <p style={{ color: '#B89968', fontSize: '13px' }}>
-                  {wine.vintage} • {wine.varietal}
+                <p className="text-sm mb-1" style={{ color: "#B89968" }}>
+                  <strong>Vintage:</strong> {wine.vintage ?? "N/A"}
                 </p>
+                <p className="text-sm mb-1" style={{ color: "#B89968" }}>
+                  <strong>Varietal:</strong> {wine.varietal ?? "N/A"}
+                </p>
+                <p className="text-sm mb-2" style={{ color: "#B89968" }}>
+                  <strong>Region:</strong> {wine.region ?? "N/A"}
+                </p>
+                {wine.notes && (
+                  <p
+                    className="text-xs italic mt-2 pt-2"
+                    style={{
+                      color: "#6B1F2F",
+                      borderTop: "1px solid "#E8D4B8",
+                    }}
+                  >
+                    {wine.notes}
+                  </p>
+                )}
               </div>
             ))}
           </div>
-        </div>
+        )}
       </div>
-    </Layout>
->>>>>>> 4848a43c7cbead93e46594932b9b7a5f7063185a
+    </MainLayout>
   );
 }
