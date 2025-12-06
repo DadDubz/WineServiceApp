@@ -185,4 +185,15 @@ venv/ -e
 # Environment files
 *.env
 *.env.*
+<<<<<<< HEAD
 >>>>>>> 8158e54db142bd8fee6f9817d8527b655af28054
+=======
+-e 
+# Environment files
+*.env
+*.env.*
+-e 
+# Environment files
+*.env
+*.env.*
+>>>>>>> 4848a43c7cbead93e46594932b9b7a5f7063185a
