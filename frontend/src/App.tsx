@@ -8,23 +8,36 @@ import InventoryPage from "@/pages/InventoryPage";
 import ServicePage from "@/pages/ServicePage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
+// Plasmic Host renderer
+import PlasmicHostPage from "@/pages/PlasmicHostPage";
+
 function AppRoutes() {
   const { user } = useAuth();
 
   return (
     <Routes>
-      {/* Public login route */}
+      {/* Public Login */}
       <Route
         path="/login"
         element={!user ? <LoginPage /> : <Navigate to="/" replace />}
       />
 
-      {/* Dashboard (default) */}
+      {/* Default dashboard (React-coded) */}
       <Route
         path="/"
         element={
           <ProtectedRoute>
             <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* 🔥 Plasmic Dashboard UI */}
+      <Route
+        path="/dashboard-ui"
+        element={
+          <ProtectedRoute>
+            <PlasmicHostPage pageName="DashboardUI" />
           </ProtectedRoute>
         }
       />
@@ -39,12 +52,22 @@ function AppRoutes() {
         }
       />
 
-      {/* Service */}
+      {/* React-coded Service Page */}
       <Route
         path="/service"
         element={
           <ProtectedRoute>
             <ServicePage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* 🔥 Plasmic Service UI */}
+      <Route
+        path="/service-ui"
+        element={
+          <ProtectedRoute>
+            <PlasmicHostPage pageName="ServiceUI" />
           </ProtectedRoute>
         }
       />

@@ -11,6 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@plasmicapp/cli": "^0.1.348",
+    "@plasmicapp/loader-react": "^1.0.404",
     "axios": "^1.10.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
