@@ -157,7 +157,7 @@ export default function DashboardPage() {
                     className="text-xs italic mt-2 pt-2"
                     style={{
                       color: "#6B1F2F",
-                      borderTop: "1px solid "#E8D4B8",
+                            borderTop: "1px solid #E8D4B8",
                     }}
                   >
                     {wine.notes}
