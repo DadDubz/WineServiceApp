@@ -107,68 +107,36 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Wine Inventory */}
-        <div 
-          className="rounded-xl shadow-lg p-6"
-          style={{ backgroundColor: '#FEFEFE' }}
-        >
-          <div className="flex items-center justify-between mb-6">
-            <h2 
-              className="text-2xl font-bold"
-              style={{ 
-                color: '#6B1F2F',
-                fontFamily: 'Playfair Display, Georgia, serif'
-              }}
-            >
-              Wine Inventory
-            </h2>
-            <span className="text-3xl">🍇</span>
-          </div>
-
-          {wines.length === 0 ? (
-            <p className="text-center py-8" style={{ color: '#B89968' }}>
-              Loading wines...
-            </p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {wines.map((wine) => (
-                <div
-                  key={wine.id}
-                  className="border rounded-lg p-4 hover:shadow-md transition-shadow"
-                  style={{ borderColor: '#D4AF88' }}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 
-                      className="font-bold text-lg"
-                      style={{ color: '#6B1F2F' }}
-                    >
-                      {wine.name}
-                    </h3>
-                    <span className="text-2xl">🍷</span>
-                  </div>
-                  <p className="text-sm mb-1" style={{ color: '#B89968' }}>
-                    <strong>Vintage:</strong> {wine.vintage || 'N/A'}
-                  </p>
-                  <p className="text-sm mb-1" style={{ color: '#B89968' }}>
-                    <strong>Varietal:</strong> {wine.varietal || 'N/A'}
-                  </p>
-                  <p className="text-sm mb-2" style={{ color: '#B89968' }}>
-                    <strong>Region:</strong> {wine.region || 'N/A'}
-                  </p>
-                  {wine.notes && (
-                    <p className="text-xs italic mt-2 pt-2" style={{ 
-                      color: '#6B1F2F',
-                      borderTop: '1px solid #E8D4B8'
-                    }}>
-                      {wine.notes}
-                    </p>
-                  )}
+        {/* Quick Overview */}
+        <div style={{ backgroundColor: '#FEFEFE', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #E8D4B8' }}>
+          <h2 style={{ fontSize: '22px', fontWeight: '700', color: '#6B1F2F', fontFamily: 'Playfair Display, Georgia, serif', marginBottom: '16px' }}>
+            Recent Wines
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+            {wines.slice(0, 3).map((wine) => (
+              <div
+                key={wine.id}
+                style={{
+                  padding: '16px',
+                  borderRadius: '8px',
+                  border: '1px solid #E8D4B8',
+                  backgroundColor: '#F8F5F0',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#6B1F2F' }}>
+                    {wine.name}
+                  </h3>
+                  <span style={{ fontSize: '24px' }}>🍷</span>
                 </div>
-              ))}
-            </div>
-          )}
+                <p style={{ color: '#B89968', fontSize: '13px' }}>
+                  {wine.vintage} • {wine.varietal}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 }
