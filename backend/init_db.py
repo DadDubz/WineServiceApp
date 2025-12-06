@@ -9,6 +9,8 @@ from app.models.table import Table
 from app.models.company import Company
 from app.models.inventory import InventoryItem
 from app.models.service_log import ServiceLog
+from app.models.guest import Guest
+from app.models.order import Order
 from app.auth import get_password_hash
 
 def init_database():
