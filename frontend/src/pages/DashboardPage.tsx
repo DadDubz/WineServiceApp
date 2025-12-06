@@ -1,5 +1,4 @@
 // src/pages/DashboardPage.tsx
-<<<<<<< HEAD
 import { useEffect, useState } from "react";
 import MainLayout from "@/layouts/MainLayout";
 import { useAuth } from "@/context/AuthContext";
@@ -17,16 +16,6 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [wines, setWines] = useState<Wine[]>([]);
   const [loadingWines, setLoadingWines] = useState(true);
-=======
-import { useState, useEffect } from 'react';
-import Layout from '@/components/Layout';
-
-export default function DashboardPage() {
-  const [user, setUser] = useState<any>(null);
-  const [wines, setWines] = useState<any[]>([]);
-  const [tables, setTables] = useState<any[]>([]);
-  const [guests, setGuests] = useState<any[]>([]);
->>>>>>> 4848a43c7cbead93e46594932b9b7a5f7063185a
 
   useEffect(() => {
     const API_BASE =
