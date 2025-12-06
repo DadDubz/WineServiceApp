@@ -86,7 +86,7 @@ export default function MainLayout({
             </button>
             <button
               onClick={() => navigate("/inventory")}
-              className="px-3 py-1 rounded-full border border-[#FCE8C8]/40"
+              className="px-3 py-1 rounded-full border border[#FCE8C8]/40"
               style={isActive("/inventory")}
             >
               Wine Inventory

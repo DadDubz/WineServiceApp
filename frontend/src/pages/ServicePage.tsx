@@ -204,9 +204,7 @@ export default function ServicePage() {
                       updateSelected({ guestName: e.target.value })
                     }
                     className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
-                    style={{
-                      borderColor: "#D4AF88",
-                    }}
+                    style={{ borderColor: "#D4AF88" }}
                   />
                 </div>
                 <div>
@@ -220,9 +218,7 @@ export default function ServicePage() {
                       updateSelected({ roomNumber: e.target.value })
                     }
                     className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
-                    style={{
-                      borderColor: "#D4AF88",
-                    }}
+                    style={{ borderColor: "#D4AF88" }}
                   />
                 </div>
               </div>
@@ -241,9 +237,7 @@ export default function ServicePage() {
                     className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
                     rows={3}
                     placeholder="E.g., 2x Pinot Noir by the glass, 1x Champagne aperitif…"
-                    style={{
-                      borderColor: "#D4AF88",
-                    }}
+                    style={{ borderColor: "#D4AF88" }}
                   />
                 </div>
                 <div>
@@ -279,7 +273,7 @@ export default function ServicePage() {
                 </div>
               </div>
 
-              {/* Allergies, substitutions, protein */}
+              {/* Allergies, substitutions */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div>
                   <label className="block text-xs font-semibold mb-1 text-gray-700">
@@ -293,9 +287,7 @@ export default function ServicePage() {
                     className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
                     rows={2}
                     placeholder="E.g., no nuts, lactose-intolerant…"
-                    style={{
-                      borderColor: "#D4AF88",
-                    }}
+                    style={{ borderColor: "#D4AF88" }}
                   />
                 </div>
                 <div>
@@ -310,14 +302,12 @@ export default function ServicePage() {
                     className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
                     rows={2}
                     placeholder="E.g., no onion, side salad instead of potatoes…"
-                    style={{
-                      borderColor: "#D4AF88",
-                    }}
+                    style={{ borderColor: "#D4AF88" }}
                   />
                 </div>
               </div>
 
-              {/* Protein doneness + notes */}
+              {/* Protein + notes */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div>
                   <label className="block text-xs font-semibold mb-1 text-gray-700">
@@ -331,9 +321,7 @@ export default function ServicePage() {
                       })
                     }
                     className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
-                    style={{
-                      borderColor: "#D4AF88",
-                    }}
+                    style={{ borderColor: "#D4AF88" }}
                   >
                     <option value="n/a">N/A</option>
                     <option value="rare">Rare</option>
@@ -355,9 +343,7 @@ export default function ServicePage() {
                     className="w-full rounded-md px-3 py-2 text-sm border focus:outline-none focus:ring-2"
                     rows={2}
                     placeholder="Anything you want FOH/BOH to remember about this table."
-                    style={{
-                      borderColor: "#D4AF88",
-                    }}
+                    style={{ borderColor: "#D4AF88" }}
                   />
                 </div>
               </div>
