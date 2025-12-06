@@ -1,6 +1,6 @@
 // src/pages/DashboardPage.tsx
 import { useEffect, useState } from "react";
-import MainLayout from "@/layout/MainLayout";
+import MainLayout from "@/layouts/MainLayout";
 import { useAuth } from "@/context/AuthContext";
 
 interface Wine {

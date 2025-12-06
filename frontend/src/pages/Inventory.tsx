@@ -1,5 +1,5 @@
 // src/pages/InventoryPage.tsx
-import MainLayout from "@/layout/MainLayout";
+import MainLayout from "@/layouts/MainLayout";
 
 export default function InventoryPage() {
   return (

@@ -1,6 +1,6 @@
 // src/pages/ServicePage.tsx
 import { useState } from "react";
-import MainLayout from "@/layout/MainLayout";
+import MainLayout from "@/layouts/MainLayout";
 
 type ProteinDoneness =
   | "rare"
