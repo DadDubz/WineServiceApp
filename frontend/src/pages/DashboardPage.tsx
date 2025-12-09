@@ -1,270 +1,151 @@
 // src/pages/DashboardPage.tsx
-import { useEffect, useState } from "react";
 import MainLayout from "@/layouts/MainLayout";
 
-interface WineSummary {
-  id: number;
-  name: string;
-  category: "Sparkling" | "White" | "Red" | "Dessert";
-  byTheGlass: boolean;
-  stock: number;
-  par: number;
-  lastUsed: string;
-  notes?: string;
-}
-
 export default function DashboardPage() {
-  const [wines, setWines] = useState<WineSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const API_BASE =
-    import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
-
-  useEffect(() => {
-    const fetchWines = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/wines/`);
-        if (!res.ok) throw new Error("Failed to load wines");
-        const data = await res.json();
-
-        const mapped: WineSummary[] = data.map((w: any) => ({
-          id: w.id,
-          name: w.name,
-          category: w.category,
-          byTheGlass: w.by_the_glass,
-          stock: w.current_stock ?? 0,
-          par: w.par_level ?? 0,
-          lastUsed: w.last_used_service ?? "—",
-          notes: w.notes ?? "",
-        }));
-
-        setWines(mapped);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchWines();
-  }, [API_BASE]);
-
-  const totalByGlass = wines.filter((w) => w.byTheGlass).length;
-  const lowStock = wines.filter((w) => w.stock > 0 && w.stock <= (w.par || 0));
-  const outOfStock = wines.filter((w) => w.stock === 0);
-
   return (
     <MainLayout
-      title="Tonight’s Overview"
-      subtitle="Quick snapshot of service and cellar at a glance"
+      title="Dashboard"
+      subtitle="Tonight’s overview of guests, wine, and service"
     >
-      {/* Top cards */}
-      <section className="grid gap-4 md:grid-cols-3 mb-6">
-        <div className="rounded-xl border border-[#E8D4B8] bg-[#FDF8F2] p-4 shadow-sm">
-          <p className="text-xs uppercase tracking-[0.16em] text-[#B08968] mb-1">
-            By-the-Glass List
-          </p>
-          <p
-            className="text-2xl font-semibold text-[#4A1520]"
-            style={{ fontFamily: "Playfair Display, Georgia, serif" }}
-          >
-            {totalByGlass}
-          </p>
-          <p className="text-xs text-[#7B5A45] mt-1">
-            Wines currently marked as BTG
-          </p>
-        </div>
+      {/* Top row - key metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <CardStat label="Covers" value="32" sub="Booked for tonight" />
+        <CardStat label="Open Tables" value="5" sub="Not yet seated" />
+        <CardStat label="Bottles On Hand" value="184" sub="All SKUs" />
+      </div>
 
-        <div className="rounded-xl border border-[#E8D4B8] bg-[#FDF8F2] p-4 shadow-sm">
-          <p className="text-xs uppercase tracking-[0.16em] text-[#B08968] mb-1">
-            Low Stock Alerts
-          </p>
-          <p
-            className="text-2xl font-semibold text-[#4A1520]"
-            style={{ fontFamily: "Playfair Display, Georgia, serif" }}
-          >
-            {lowStock.length}
-          </p>
-          <p className="text-xs text-[#7B5A45] mt-1">
-            At or below par level – check before service
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-[#E8D4B8] bg-[#FDF8F2] p-4 shadow-sm">
-          <p className="text-xs uppercase tracking-[0.16em] text-[#B08968] mb-1">
-            86’d Wines
-          </p>
-          <p
-            className="text-2xl font-semibold text-[#4A1520]"
-            style={{ fontFamily: "Playfair Display, Georgia, serif" }}
-          >
-            {outOfStock.length}
-          </p>
-          <p className="text-xs text-[#7B5A45] mt-1">
-            Update menus / FOH talking points
-          </p>
-        </div>
-      </section>
-
-      {/* Two-column layout */}
-      <section className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)]">
-        {/* Recent / key wines table */}
-        <div className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#E8D4B8] flex items-center justify-between">
-            <div>
-              <h2
-                className="text-lg font-semibold text-[#4A1520]"
-                style={{ fontFamily: "Playfair Display, Georgia, serif" }}
+      {/* Second row - split layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: upcoming tables */}
+        <div className="lg:col-span-2 space-y-4">
+          <SectionTitle title="Upcoming Seatings" />
+          <div className="divide-y rounded-xl border" style={{ borderColor: "#E8D4B8" }}>
+            {[
+              {
+                table: "T1",
+                room: "Cabin 3",
+                time: "6:00 pm",
+                guests: 2,
+                notes: "Anniversary, enjoys Burgundy.",
+              },
+              {
+                table: "T2",
+                room: "Cabin 7",
+                time: "6:30 pm",
+                guests: 4,
+                notes: "One guest gluten-free.",
+              },
+              {
+                table: "T3",
+                room: "Suite 1",
+                time: "7:00 pm",
+                guests: 2,
+                notes: "Prefers dry white wines.",
+              },
+            ].map((t) => (
+              <div
+                key={t.table}
+                className="flex items-start justify-between gap-3 px-4 py-3"
               >
-                Cellar Focus
-              </h2>
-              <p className="text-xs text-[#7B5A45]">
-                Wines that matter most for tonight’s service
-              </p>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-[#F8EFE4]">
-                <tr className="text-left text-xs uppercase tracking-wide text-[#7B5A45]">
-                  <th className="px-4 py-2 font-semibold">Wine</th>
-                  <th className="px-4 py-2 font-semibold">Category</th>
-                  <th className="px-4 py-2 font-semibold">Stock</th>
-                  <th className="px-4 py-2 font-semibold">Par</th>
-                  <th className="px-4 py-2 font-semibold">BTG</th>
-                  <th className="px-4 py-2 font-semibold">Last Used</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading && (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-4 py-6 text-center text-xs text-[#7B5A45]"
-                    >
-                      Loading wines…
-                    </td>
-                  </tr>
-                )}
-
-                {!isLoading && wines.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-4 py-6 text-center text-xs text-[#7B5A45]"
-                    >
-                      No wines found yet. Add wines in the inventory section.
-                    </td>
-                  </tr>
-                )}
-
-                {!isLoading &&
-                  wines.map((wine) => {
-                    const isLow = wine.stock > 0 && wine.stock <= wine.par;
-                    const isOut = wine.stock === 0;
-
-                    return (
-                      <tr
-                        key={wine.id}
-                        className="border-t border-[#F0E0CF] hover:bg-[#FDF7F2]"
-                      >
-                        <td className="px-4 py-3 text-[#3B2620]">
-                          <div className="font-medium">{wine.name}</div>
-                          {wine.notes && (
-                            <div className="text-[11px] text-[#8A6852]">
-                              {wine.notes}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-[#7B5A45] whitespace-nowrap">
-                          {wine.category}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={[
-                              "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium",
-                              isOut
-                                ? "bg-[#FDE4E2] text-[#8E2525]"
-                                : isLow
-                                ? "bg-[#FFF4D6] text-[#8B5A12]"
-                                : "bg-[#E4F5E7] text-[#276749]",
-                            ].join(" ")}
-                          >
-                            {wine.stock}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-[#7B5A45]">
-                          {wine.par}
-                        </td>
-                        <td className="px-4 py-3 text-xs">
-                          {wine.byTheGlass ? (
-                            <span className="inline-flex px-2 py-0.5 rounded-full bg-[#6B1F2F] text-[#FDF7EE] text-[11px]">
-                              Yes
-                            </span>
-                          ) : (
-                            <span className="inline-flex px-2 py-0.5 rounded-full bg-[#E7D6CF] text-[#7B5A45] text-[11px]">
-                              Bottle
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-[#7B5A45] whitespace-nowrap">
-                          {wine.lastUsed || "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
+                <div>
+                  <div className="text-sm font-semibold text-slate-800">
+                    {t.table} • {t.room}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {t.guests} guests • {t.time}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-600">{t.notes}</div>
+                </div>
+                <button className="self-center text-xs px-3 py-1 rounded-full border border-slate-300 hover:bg-slate-50">
+                  Open in Service
+                </button>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Right column: Tonight notes */}
+        {/* Right: wine notes */}
         <div className="space-y-4">
-          <div className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm p-4">
-            <h3
-              className="text-sm font-semibold text-[#4A1520] mb-2"
-              style={{ fontFamily: "Playfair Display, Georgia, serif" }}
-            >
-              Service Notes
-            </h3>
-            <ul className="text-xs text-[#7B5A45] space-y-1 list-disc pl-4">
-              <li>Confirm 86’d items with FOH before guests are seated.</li>
-              <li>
-                Walk the cellar once before service to double-check low stock.
-              </li>
-              <li>Align pairing suggestions for tonight’s tasting menu.</li>
-            </ul>
-          </div>
-
-          <div className="rounded-2xl bg-[#FDF8F2] border border-[#E8D4B8] shadow-sm p-4">
-            <h3
-              className="text-sm font-semibold text-[#4A1520] mb-2"
-              style={{ fontFamily: "Playfair Display, Georgia, serif" }}
-            >
-              Quick Links
-            </h3>
-            <div className="flex flex-col gap-2 text-xs">
-              <a
-                href="/service"
-                className="inline-flex items-center justify-between px-3 py-2 rounded-lg bg-[#6B1F2F] text-[#FDF7EE] hover:brightness-110 transition"
-              >
-                <span>Dinner Service View</span>
-                <span className="text-[10px] opacity-80">Tables & notes</span>
-              </a>
-              <a
-                href="/inventory"
-                className="inline-flex items-center justify-between px-3 py-2 rounded-lg bg-white text-[#4A1520] border border-[#E8D4B8] hover:bg-[#F8EFE4] transition"
-              >
-                <span>Manage Inventory</span>
-                <span className="text-[10px] text-[#7B5A45]">
-                  Counts, par levels, costs
-                </span>
-              </a>
-            </div>
+          <SectionTitle title="Featured Wines" />
+          <div className="space-y-3 text-sm">
+            <WineCard
+              name="2018 Pinot Noir"
+              region="Willamette Valley"
+              notes="Silky red fruit, subtle oak – ideal for lighter mains and poultry."
+            />
+            <WineCard
+              name="2020 Chablis"
+              region="Burgundy"
+              notes="Bright acidity, saline edge – pour with halibut, scallops, or crudités."
+            />
+            <WineCard
+              name="NV Grower Champagne"
+              region="Montagne de Reims"
+              notes="Use as aperitif; offer bottle upgrade for celebrations."
+            />
           </div>
         </div>
-      </section>
+      </div>
     </MainLayout>
+  );
+}
+
+function CardStat({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+}) {
+  return (
+    <div className="rounded-xl border shadow-sm px-4 py-3" style={{ borderColor: "#E8D4B8" }}>
+      <div className="text-[11px] uppercase tracking-wide text-slate-500">
+        {label}
+      </div>
+      <div
+        className="mt-1 text-2xl font-semibold"
+        style={{ color: "#6B1F2F", fontFamily: "Playfair Display, Georgia, serif" }}
+      >
+        {value}
+      </div>
+      {sub && <div className="mt-1 text-xs text-slate-500">{sub}</div>}
+    </div>
+  );
+}
+
+function SectionTitle({ title }: { title: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <h2
+        className="text-sm font-semibold"
+        style={{ color: "#4A0E1E", fontFamily: "Playfair Display, Georgia, serif" }}
+      >
+        {title}
+      </h2>
+    </div>
+  );
+}
+
+function WineCard({
+  name,
+  region,
+  notes,
+}: {
+  name: string;
+  region: string;
+  notes: string;
+}) {
+  return (
+    <div className="rounded-lg border px-3 py-2" style={{ borderColor: "#E8D4B8" }}>
+      <div className="flex justify-between items-baseline gap-2">
+        <div className="text-sm font-medium text-slate-800">{name}</div>
+        <div className="text-[11px] uppercase tracking-wide text-slate-500">
+          {region}
+        </div>
+      </div>
+      <p className="mt-1 text-xs text-slate-600">{notes}</p>
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-// src/App.tsx
+// src/App.tsx 
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 
@@ -8,21 +8,16 @@ import InventoryPage from "@/pages/InventoryPage";
 import ServicePage from "@/pages/ServicePage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
-// Plasmic Host renderer
-import PlasmicHostPage from "@/pages/PlasmicHostPage";
-
 function AppRoutes() {
   const { user } = useAuth();
 
   return (
     <Routes>
-      {/* Public Login */}
       <Route
         path="/login"
         element={!user ? <LoginPage /> : <Navigate to="/" replace />}
       />
 
-      {/* Default dashboard (React-coded) */}
       <Route
         path="/"
         element={
@@ -32,17 +27,6 @@ function AppRoutes() {
         }
       />
 
-      {/* 🔥 Plasmic Dashboard UI */}
-      <Route
-        path="/dashboard-ui"
-        element={
-          <ProtectedRoute>
-            <PlasmicHostPage pageName="DashboardUI" />
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Inventory */}
       <Route
         path="/inventory"
         element={
@@ -52,7 +36,6 @@ function AppRoutes() {
         }
       />
 
-      {/* React-coded Service Page */}
       <Route
         path="/service"
         element={
@@ -62,17 +45,6 @@ function AppRoutes() {
         }
       />
 
-      {/* 🔥 Plasmic Service UI */}
-      <Route
-        path="/service-ui"
-        element={
-          <ProtectedRoute>
-            <PlasmicHostPage pageName="ServiceUI" />
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
