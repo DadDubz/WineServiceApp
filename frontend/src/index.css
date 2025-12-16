@@ -1,5 +1,8 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/* --- Your custom global styles --- */
 :root {
   font-family: 'Playfair Display', 'Georgia', serif;
   line-height: 1.6;
