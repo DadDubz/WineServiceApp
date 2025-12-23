@@ -2,23 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
-/* --- Your custom global styles --- */
+/* ---------- Global wine-service styling ---------- */
+
 :root {
-  font-family: 'Playfair Display', 'Georgia', serif;
+  font-family: "Playfair Display", "Georgia", serif;
   line-height: 1.6;
   font-weight: 400;
 
   /* Wine Service Color Palette */
-  --maroon: #6B1F2F;
-  --maroon-dark: #4A1520;
-  --maroon-light: #8B2A3F;
-  --tan: #D4AF88;
-  --tan-light: #E8D4B8;
-  --tan-dark: #B89968;
-  --white: #FEFEFE;
-  --cream: #F8F5F0;
-  --black: #1A1A1A;
-  
+  --maroon: #6b1f2f;
+  --maroon-dark: #4a1520;
+  --maroon-light: #8b2a3f;
+  --tan: #d4af88;
+  --tan-light: #e8d4b8;
+  --tan-dark: #b89968;
+  --white: #fefefe;
+  --cream: #f8f5f0;
+  --black: #1a1a1a;
+
   color: var(--black);
   background-color: var(--cream);
 
@@ -41,8 +42,13 @@ body {
   background-color: var(--cream);
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: 'Playfair Display', 'Georgia', serif;
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "Playfair Display", "Georgia", serif;
   color: var(--maroon);
   font-weight: 700;
 }
