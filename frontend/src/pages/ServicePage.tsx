@@ -16,8 +16,6 @@ type StepKey =
 
 type StepStatus = "todo" | "active" | "done";
 
-type CourseKey = "starter" | "entree" | "dessert";
-
 type ProteinDoneness =
   | "rare"
   | "medium-rare"
@@ -26,11 +24,13 @@ type ProteinDoneness =
   | "well"
   | "n/a";
 
+type CourseKey = "starter" | "entree" | "dessert" | "cheese";
+type CoursePhase = "not_started" | "served" | "cleared";
+
 interface Step {
   key: StepKey;
   label: string;
   status: StepStatus;
-  // When this step was marked done (optional)
   doneAt?: number;
 }
 
@@ -42,11 +42,11 @@ interface ExpoTiming {
 
 interface ServiceTable {
   id: number;
-  tableNumber: string;
+  tableNumber: string; // e.g. "T1"
   roomNumber?: string;
   guestName: string;
   guestsCount: number;
-  seatTime?: string; // e.g. "6:30"
+  seatTime?: string;
   notes: string;
   drinks: string;
   addOns: {
@@ -58,11 +58,13 @@ interface ServiceTable {
   substitutions: string;
   protein: ProteinDoneness;
 
-  // New service UX state
   steps: Step[];
-  expo: Record<CourseKey, ExpoTiming>;
-  // for quick “undo”
-  history: StepKey[]; // sequence of completed steps
+  expo: Record<Exclude<CourseKey, "cheese">, ExpoTiming>;
+  history: StepKey[];
+
+  // NEW: second toggle states per course
+  coursePhases: Record<CourseKey, CoursePhase>;
+  courseHistory: Array<{ course: CourseKey; prev: CoursePhase }>;
 }
 
 interface Guest {
@@ -82,15 +84,15 @@ interface PreDinnerItem {
   seatTime: string;
   notes?: string;
   allergies?: string;
-  // seating state
-  seated: boolean;
-  assignedTableId?: number;
+
+  // NEW: arrival check + assignment happens in Dinner tab
+  arrived: boolean;
+  assignedTableNum?: number; // 1..20
 }
 
 const BRAND = {
   maroon: "#6B1F2F",
   maroonDark: "#4A1520",
-  tan: "#D4AF88",
   tanLight: "#E8D4B8",
   cream: "#FDF8F2",
   ink: "#3B2620",
@@ -107,10 +109,10 @@ const baseStepTemplate: Array<{ key: StepKey; label: string }> = [
   { key: "canoe", label: "Canoe" },
 ];
 
-// --- helpers ---
 function nowMs() {
   return Date.now();
 }
+
 function fmtTime(ms?: number) {
   if (!ms) return "—";
   const d = new Date(ms);
@@ -133,35 +135,26 @@ function buildSteps(cheeseEnabled: boolean, insertAfter?: StepKey): Step[] {
 
   if (!cheeseEnabled) return base;
 
-  // insert default after wine unless specified
   const afterKey = insertAfter ?? "wine";
   const insertIdx = Math.min(
     base.length,
     Math.max(0, base.findIndex((x) => x.key === afterKey) + 1)
   );
 
-  const cheeseStep: Step = {
-    key: "cheese",
-    label: "Cheese",
-    status: "todo",
-  };
-
-  const next = [...base.slice(0, insertIdx), cheeseStep, ...base.slice(insertIdx)];
-  return next;
+  const cheeseStep: Step = { key: "cheese", label: "Cheese", status: "todo" };
+  return [...base.slice(0, insertIdx), cheeseStep, ...base.slice(insertIdx)];
 }
 
 function getActiveIndex(steps: Step[]) {
   const idx = steps.findIndex((s) => s.status === "active");
-  // If none active (edge case), pick first todo
   if (idx === -1) return steps.findIndex((s) => s.status === "todo");
   return idx;
 }
 
-function stepColorClass(step: Step) {
-  // Color-coded by step type + state
-  // We keep it simple with Tailwind utility classes
+function stepPillClass(step: Step) {
   const base = "px-2 py-1 rounded-full text-[11px] font-medium border";
-  if (step.status === "done") return `${base} bg-emerald-50 border-emerald-200 text-emerald-800`;
+  if (step.status === "done")
+    return `${base} bg-emerald-50 border-emerald-200 text-emerald-800`;
   if (step.status === "active") {
     if (step.key === "entree") return `${base} bg-amber-50 border-amber-200 text-amber-900`;
     if (step.key === "starter") return `${base} bg-sky-50 border-sky-200 text-sky-900`;
@@ -171,6 +164,25 @@ function stepColorClass(step: Step) {
     return `${base} bg-slate-50 border-slate-200 text-slate-900`;
   }
   return `${base} bg-white border-slate-200 text-slate-500`;
+}
+
+function coursePhaseBadge(phase: CoursePhase) {
+  const base = "px-2 py-1 rounded-full text-[11px] font-semibold border";
+  if (phase === "cleared") return `${base} bg-emerald-50 border-emerald-200 text-emerald-800`;
+  if (phase === "served") return `${base} bg-amber-50 border-amber-200 text-amber-900`;
+  return `${base} bg-white border-slate-200 text-slate-500`;
+}
+
+function nextPhase(phase: CoursePhase): CoursePhase {
+  if (phase === "not_started") return "served";
+  if (phase === "served") return "cleared";
+  return "cleared";
+}
+
+function prevPhase(phase: CoursePhase): CoursePhase {
+  if (phase === "cleared") return "served";
+  if (phase === "served") return "not_started";
+  return "not_started";
 }
 
 // --- initial data ---
@@ -191,6 +203,8 @@ const initialTables: ServiceTable[] = [
     steps: buildSteps(false),
     expo: { starter: {}, entree: {}, dessert: {} },
     history: [],
+    coursePhases: { starter: "not_started", entree: "not_started", dessert: "not_started", cheese: "not_started" },
+    courseHistory: [],
   },
   {
     id: 2,
@@ -208,31 +222,16 @@ const initialTables: ServiceTable[] = [
     steps: buildSteps(true),
     expo: { starter: {}, entree: {}, dessert: {} },
     history: [],
-  },
-  {
-    id: 3,
-    tableNumber: "T3",
-    roomNumber: "Suite 1",
-    guestName: "Taylor",
-    guestsCount: 2,
-    seatTime: "7:00",
-    notes: "",
-    drinks: "",
-    addOns: { cheeseBoard: false, sparklingWater: true, dessertWine: false },
-    allergies: "",
-    substitutions: "No onion in sauce",
-    protein: "medium-rare",
-    steps: buildSteps(false),
-    expo: { starter: {}, entree: {}, dessert: {} },
-    history: [],
+    coursePhases: { starter: "not_started", entree: "not_started", dessert: "not_started", cheese: "not_started" },
+    courseHistory: [],
   },
 ];
 
 const initialPreDinner: PreDinnerItem[] = [
-  { id: 101, lastName: "Barnes", roomNumber: "Cabin 3", partySize: 2, seatTime: "6:30", notes: "Anniversary; enjoys Burgundy", seated: false },
-  { id: 102, lastName: "Fynn", roomNumber: "Cabin 7", partySize: 4, seatTime: "6:30", notes: "One guest gluten-free", seated: false },
-  { id: 103, lastName: "Paris", roomNumber: "V8", partySize: 2, seatTime: "6:45", notes: "No mushrooms", seated: false },
-  { id: 104, lastName: "Reynolds", roomNumber: "V3", partySize: 2, seatTime: "7:00", notes: "", seated: false },
+  { id: 101, lastName: "Barnes", roomNumber: "Cabin 3", partySize: 2, seatTime: "6:30", notes: "Anniversary; enjoys Burgundy", allergies: "", arrived: false },
+  { id: 102, lastName: "Fynn", roomNumber: "Cabin 7", partySize: 4, seatTime: "6:30", notes: "One guest gluten-free", allergies: "gluten", arrived: false },
+  { id: 103, lastName: "Paris", roomNumber: "V8", partySize: 2, seatTime: "6:45", notes: "No mushrooms", allergies: "", arrived: false },
+  { id: 104, lastName: "Reynolds", roomNumber: "V3", partySize: 2, seatTime: "7:00", notes: "", allergies: "", arrived: false },
 ];
 
 const initialGuests: Guest[] = [
@@ -241,16 +240,16 @@ const initialGuests: Guest[] = [
   { id: 3, lastName: "Paris", firstName: "", roomNumber: "V8", notes: "No mush", allergies: "" },
 ];
 
+const TABLE_NUMBERS = Array.from({ length: 20 }, (_, i) => i + 1);
+
 export default function ServicePage() {
   const [tab, setTab] = useState<ServiceTab>("dinner");
-
-  const [tables, setTables] = useState<ServiceTable[]>(() => {
-    // Ensure tables with cheese add-on get steps built with cheese
-    return initialTables.map((t) => ({
+  const [tables, setTables] = useState<ServiceTable[]>(() =>
+    initialTables.map((t) => ({
       ...t,
       steps: buildSteps(t.addOns.cheeseBoard),
-    }));
-  });
+    }))
+  );
 
   const [selectedId, setSelectedId] = useState<number | null>(initialTables[0]?.id ?? null);
   const selectedTable = tables.find((t) => t.id === selectedId) ?? null;
@@ -274,11 +273,13 @@ export default function ServicePage() {
     );
   }, [guests, guestSearch]);
 
+  const dinnerChecklist = useMemo(() => {
+    return [...preDinner].sort((a, b) => a.seatTime.localeCompare(b.seatTime));
+  }, [preDinner]);
+
   // --- table update helpers ---
   const updateTable = (id: number, patch: Partial<ServiceTable>) => {
-    setTables((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...patch } : t))
-    );
+    setTables((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   };
 
   const updateSelected = (patch: Partial<ServiceTable>) => {
@@ -289,14 +290,11 @@ export default function ServicePage() {
     });
   };
 
+  // --- Add-on toggle (cheese affects steps) ---
   const toggleAddOn = (field: keyof ServiceTable["addOns"]) => {
     if (!selectedTable) return;
-    const nextAddOns = {
-      ...selectedTable.addOns,
-      [field]: !selectedTable.addOns[field],
-    };
+    const nextAddOns = { ...selectedTable.addOns, [field]: !selectedTable.addOns[field] };
 
-    // If cheese toggled ON/OFF, rebuild steps while preserving progress where possible
     if (field === "cheeseBoard") {
       const cheeseOn = nextAddOns.cheeseBoard;
 
@@ -305,13 +303,11 @@ export default function ServicePage() {
       const prevActiveKey = prevSteps.find((s) => s.status === "active")?.key;
 
       let nextSteps = buildSteps(cheeseOn);
-      // Re-apply done statuses
       nextSteps = nextSteps.map((s) => ({
         ...s,
         status: prevDoneKeys.includes(s.key) ? "done" : "todo",
       }));
 
-      // Re-apply active key if it still exists, else set first todo active
       if (prevActiveKey && nextSteps.some((s) => s.key === prevActiveKey)) {
         nextSteps = nextSteps.map((s) => ({
           ...s,
@@ -332,7 +328,7 @@ export default function ServicePage() {
     updateSelected({ addOns: nextAddOns });
   };
 
-  // --- service step actions ---
+  // --- Step advance/back (one-click) ---
   const advanceStep = (tableId: number) => {
     setTables((prev) =>
       prev.map((t) => {
@@ -343,15 +339,11 @@ export default function ServicePage() {
         if (activeIdx === -1) return t;
 
         const active = steps[activeIdx];
-        // mark active done
         steps[activeIdx] = { ...active, status: "done", doneAt: nowMs() };
         const history = [...t.history, active.key];
 
-        // next active
         const nextIdx = steps.findIndex((s) => s.status === "todo");
-        if (nextIdx !== -1) {
-          steps[nextIdx] = { ...steps[nextIdx], status: "active" };
-        }
+        if (nextIdx !== -1) steps[nextIdx] = { ...steps[nextIdx], status: "active" };
 
         return { ...t, steps, history };
       })
@@ -359,7 +351,6 @@ export default function ServicePage() {
   };
 
   const backStep = (tableId: number) => {
-    // Undo last completed step, and make it active again
     setTables((prev) =>
       prev.map((t) => {
         if (t.id !== tableId) return t;
@@ -368,119 +359,66 @@ export default function ServicePage() {
         const lastDoneKey = t.history[t.history.length - 1];
         const history = t.history.slice(0, -1);
 
-        const steps = t.steps.map((s) => {
-          // clear any current active (we'll set new active below)
-          if (s.status === "active") return { ...s, status: "todo" };
-          return s;
-        });
-
+        const steps = t.steps.map((s) => (s.status === "active" ? { ...s, status: "todo" } : s));
         const idx = steps.findIndex((s) => s.key === lastDoneKey);
         if (idx === -1) return { ...t, history };
 
-        // turn that done step back into active
         steps[idx] = { ...steps[idx], status: "active", doneAt: undefined };
-
-        // Any steps after it that were todo remain todo; steps before stay done as is.
-        // Ensure no duplicate actives:
         return { ...t, steps, history };
       })
     );
   };
 
-  const insertCheeseAfter = (tableId: number, after: StepKey) => {
+  // --- NEW: Course Served/Cleared toggle ---
+  const toggleCourse = (tableId: number, course: CourseKey) => {
     setTables((prev) =>
       prev.map((t) => {
         if (t.id !== tableId) return t;
-        if (!t.addOns.cheeseBoard) return t;
 
-        const prevSteps = t.steps;
-        const prevDone = prevSteps.filter((s) => s.status === "done").map((s) => s.key);
-        const prevActiveKey = prevSteps.find((s) => s.status === "active")?.key;
+        // Cheese toggles only make sense if cheese add-on enabled
+        if (course === "cheese" && !t.addOns.cheeseBoard) return t;
 
-        let nextSteps = buildSteps(true, after);
+        const current = t.coursePhases[course];
+        const next = nextPhase(current);
 
-        // restore done statuses (only for keys that still exist)
-        nextSteps = nextSteps.map((s) => ({
-          ...s,
-          status: prevDone.includes(s.key) ? "done" : "todo",
-        }));
-
-        // restore active
-        if (prevActiveKey && nextSteps.some((s) => s.key === prevActiveKey)) {
-          nextSteps = nextSteps.map((s) => ({
-            ...s,
-            status: s.key === prevActiveKey ? "active" : s.status === "done" ? "done" : "todo",
-          }));
-        } else {
-          const firstTodo = nextSteps.findIndex((s) => s.status === "todo");
-          nextSteps = nextSteps.map((s, i) => ({
-            ...s,
-            status: s.status === "done" ? "done" : i === (firstTodo === -1 ? 0 : firstTodo) ? "active" : "todo",
-          }));
-        }
-
-        return { ...t, steps: nextSteps };
+        return {
+          ...t,
+          coursePhases: { ...t.coursePhases, [course]: next },
+          courseHistory: [...t.courseHistory, { course, prev: current }],
+        };
       })
     );
   };
 
-  // --- Expo timing actions ---
-  const setExpoTime = (tableId: number, course: CourseKey, field: keyof ExpoTiming) => {
+  const undoCourse = (tableId: number) => {
+    setTables((prev) =>
+      prev.map((t) => {
+        if (t.id !== tableId) return t;
+        if (t.courseHistory.length === 0) return t;
+
+        const last = t.courseHistory[t.courseHistory.length - 1];
+        return {
+          ...t,
+          coursePhases: { ...t.coursePhases, [last.course]: last.prev },
+          courseHistory: t.courseHistory.slice(0, -1),
+        };
+      })
+    );
+  };
+
+  // --- Expo timing ---
+  const setExpoTime = (tableId: number, course: Exclude<CourseKey, "cheese">, field: keyof ExpoTiming) => {
     const ts = nowMs();
     setTables((prev) =>
-      prev.map((t) => {
-        if (t.id !== tableId) return t;
-        return {
-          ...t,
-          expo: {
-            ...t.expo,
-            [course]: {
-              ...t.expo[course],
-              [field]: ts,
-            },
-          },
-        };
-      })
-    );
-  };
-
-  // --- Pre-dinner actions ---
-  const seatPreDinnerItem = (itemId: number, tableId: number) => {
-    const table = tables.find((t) => t.id === tableId);
-    const item = preDinner.find((p) => p.id === itemId);
-    if (!table || !item) return;
-
-    // mark preDinner item seated + assigned
-    setPreDinner((prev) =>
-      prev.map((p) =>
-        p.id === itemId ? { ...p, seated: true, assignedTableId: tableId } : p
+      prev.map((t) =>
+        t.id === tableId
+          ? { ...t, expo: { ...t.expo, [course]: { ...t.expo[course], [field]: ts } } }
+          : t
       )
     );
-
-    // update table data quickly
-    setTables((prev) =>
-      prev.map((t) => {
-        if (t.id !== tableId) return t;
-        return {
-          ...t,
-          guestName: item.lastName,
-          roomNumber: item.roomNumber ?? t.roomNumber,
-          guestsCount: item.partySize,
-          seatTime: item.seatTime,
-          notes: item.notes ?? t.notes,
-          allergies: item.allergies ?? t.allergies,
-          // also set step active to Seated (fresh start)
-          steps: buildSteps(t.addOns.cheeseBoard).map((s, idx) => ({
-            ...s,
-            status: idx === 0 ? "active" : "todo",
-          })),
-          history: [],
-          expo: { starter: {}, entree: {}, dessert: {} },
-        };
-      })
-    );
   };
 
+  // --- Pre-dinner: add guest (DB only) ---
   const addGuest = () => {
     const last = newGuestLast.trim();
     if (!last) return;
@@ -504,11 +442,20 @@ export default function ServicePage() {
     setNewGuestAllergies("");
   };
 
-  // --- Derived lists for dinner view ---
-  const dinnerChecklist = useMemo(() => {
-    // show preDinner items for tonight as a compact checklist
-    return [...preDinner].sort((a, b) => a.seatTime.localeCompare(b.seatTime));
-  }, [preDinner]);
+  // --- Dinner checklist: arrival check + assign table 1..20 ---
+  const setArrival = (id: number, arrived: boolean) => {
+    setPreDinner((prev) => prev.map((p) => (p.id === id ? { ...p, arrived } : p)));
+  };
+
+  const assignChecklistTable = (id: number, tableNum?: number) => {
+    setPreDinner((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, assignedTableNum: tableNum } : p))
+    );
+  };
+
+  // If you want this assignment to ALSO populate an internal “table record” later,
+  // we’ll do that when you switch to real table objects 1..20.
+  // For now it just tracks assignment on the checklist line.
 
   return (
     <MainLayout title="Dinner Service" subtitle="Pre-dinner planning + live service controls">
@@ -540,7 +487,7 @@ export default function ServicePage() {
 
       {tab === "pre" ? (
         <div className="grid gap-6 lg:grid-cols-2">
-          {/* Pre-dinner list */}
+          {/* Pre-dinner list (NO seating actions now) */}
           <section className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-[#E8D4B8] flex items-center justify-between">
               <div>
@@ -548,11 +495,11 @@ export default function ServicePage() {
                   Pre-Dinner List
                 </h2>
                 <p className="text-[11px] text-[#7B5A45] mt-0.5">
-                  Quick seat assignments — pick a table and click Seat
+                  Planned arrivals only — assignment happens in Dinner Service tab
                 </p>
               </div>
               <span className="text-[11px] text-[#7B5A45]">
-                {preDinner.filter((p) => !p.seated).length} pending
+                {preDinner.length} parties
               </span>
             </div>
 
@@ -561,7 +508,7 @@ export default function ServicePage() {
                 .slice()
                 .sort((a, b) => a.seatTime.localeCompare(b.seatTime))
                 .map((p) => (
-                  <div key={p.id} className="px-4 py-3 flex flex-col gap-2">
+                  <div key={p.id} className="px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="text-sm font-semibold text-[#3B2620]">
@@ -584,49 +531,14 @@ export default function ServicePage() {
                       <span
                         className={[
                           "text-[10px] px-2 py-1 rounded-full border",
-                          p.seated
+                          p.arrived
                             ? "bg-emerald-50 border-emerald-200 text-emerald-800"
                             : "bg-white border-slate-200 text-slate-600",
                         ].join(" ")}
                       >
-                        {p.seated ? "Seated" : "Pending"}
+                        {p.arrived ? "Arrived" : "Not arrived"}
                       </span>
                     </div>
-
-                    {!p.seated && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <select
-                          className="rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                          defaultValue={tables[0]?.id ?? ""}
-                          onChange={(e) => seatPreDinnerItem(p.id, Number(e.target.value))}
-                        >
-                          {tables.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.tableNumber} ({t.roomNumber ?? "—"})
-                            </option>
-                          ))}
-                        </select>
-
-                        <span className="text-[11px] text-[#7B5A45]">
-                          Tip: selecting a table auto-seats and fills it.
-                        </span>
-                      </div>
-                    )}
-
-                    {p.seated && p.assignedTableId && (
-                      <div className="text-[11px] text-[#7B5A45]">
-                        Assigned to{" "}
-                        <button
-                          className="font-semibold underline"
-                          onClick={() => {
-                            setSelectedId(p.assignedTableId!);
-                            setTab("dinner");
-                          }}
-                        >
-                          {tables.find((t) => t.id === p.assignedTableId)?.tableNumber ?? "Table"}
-                        </button>
-                      </div>
-                    )}
                   </div>
                 ))}
             </div>
@@ -713,23 +625,16 @@ export default function ServicePage() {
                 </div>
                 <div className="space-y-2 max-h-[320px] overflow-auto pr-1">
                   {filteredGuests.map((g) => (
-                    <div
-                      key={g.id}
-                      className="rounded-xl border border-[#F0E0CF] bg-white px-3 py-2"
-                    >
+                    <div key={g.id} className="rounded-xl border border-[#F0E0CF] bg-white px-3 py-2">
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-sm font-semibold text-[#3B2620]">
-                          {g.lastName}
-                          {g.firstName ? `, ${g.firstName}` : ""}
+                          {g.lastName}{g.firstName ? `, ${g.firstName}` : ""}
                         </div>
-                        <div className="text-[11px] text-[#7B5A45]">
-                          {g.roomNumber ?? "—"}
-                        </div>
+                        <div className="text-[11px] text-[#7B5A45]">{g.roomNumber ?? "—"}</div>
                       </div>
                       {(g.allergies || g.notes) && (
                         <div className="text-[11px] text-[#7B5A45] mt-1">
-                          {g.allergies ? `Allergy: ${g.allergies}. ` : ""}
-                          {g.notes ?? ""}
+                          {g.allergies ? `Allergy: ${g.allergies}. ` : ""}{g.notes ?? ""}
                         </div>
                       )}
                     </div>
@@ -743,9 +648,8 @@ export default function ServicePage() {
           </section>
         </div>
       ) : (
-        // --- DINNER SERVICE TAB ---
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1.85fr)]">
-          {/* Left: big table cards */}
+          {/* Left: tables */}
           <aside className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-[#E8D4B8] flex items-center justify-between">
               <div>
@@ -763,8 +667,7 @@ export default function ServicePage() {
               {tables.map((t) => {
                 const isActive = t.id === selectedId;
                 const activeIdx = getActiveIndex(t.steps);
-                const activeLabel =
-                  activeIdx !== -1 ? t.steps[activeIdx]?.label : "—";
+                const activeLabel = activeIdx !== -1 ? t.steps[activeIdx]?.label : "—";
 
                 return (
                   <button
@@ -782,29 +685,21 @@ export default function ServicePage() {
                         <div className="text-lg font-bold">{t.tableNumber}</div>
                         <div className={isActive ? "text-xs opacity-90" : "text-xs text-[#7B5A45]"}>
                           {t.roomNumber ?? "No room #"} • {t.guestName || "Guest"} • {t.guestsCount}
-                          {"  "}
-                          {t.seatTime ? `• ${t.seatTime}` : ""}
+                          {t.seatTime ? ` • ${t.seatTime}` : ""}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={isActive ? "text-xs opacity-90" : "text-xs text-[#7B5A45]"}>
-                          Now
-                        </div>
+                        <div className={isActive ? "text-xs opacity-90" : "text-xs text-[#7B5A45]"}>Now</div>
                         <div className="text-sm font-semibold">{activeLabel}</div>
                       </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2 mt-3">
-                      {t.steps.slice(0, 7).map((s) => (
-                        <span key={s.key} className={stepColorClass(s)}>
+                      {t.steps.map((s) => (
+                        <span key={s.key} className={stepPillClass(s)}>
                           {s.label}
                         </span>
                       ))}
-                      {t.steps.some((s) => s.key === "cheese") && (
-                        <span className={stepColorClass(t.steps.find((s) => s.key === "cheese")!)}>
-                          Cheese
-                        </span>
-                      )}
                     </div>
                   </button>
                 );
@@ -812,17 +707,17 @@ export default function ServicePage() {
             </div>
           </aside>
 
-          {/* Right: detail + controls */}
+          {/* Right: Checklist + selected table panel */}
           <section className="space-y-6">
-            {/* Mini pre-dinner checklist for expo */}
+            {/* Dinner checklist: arrival check + assign table 1..20 */}
             <div className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
               <div className="px-4 py-3 border-b border-[#E8D4B8] flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
-                    Seating Checklist
+                    Arrivals + Table Assignment
                   </h3>
                   <p className="text-[11px] text-[#7B5A45] mt-0.5">
-                    Room • Last name • Seat time (check off as they sit)
+                    When they arrive: check Arrived + pick Table 1–20
                   </p>
                 </div>
                 <button
@@ -832,46 +727,77 @@ export default function ServicePage() {
                   Edit pre-dinner
                 </button>
               </div>
-              <div className="p-4">
-                <div className="grid gap-2">
-                  {dinnerChecklist.map((p) => (
-                    <label
-                      key={p.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-[#F0E0CF] bg-white px-3 py-2"
-                    >
-                      <div className="flex items-center gap-3">
+
+              <div className="p-4 grid gap-2">
+                {dinnerChecklist.map((p) => (
+                  <div
+                    key={p.id}
+                    className="rounded-xl border border-[#F0E0CF] bg-white px-3 py-2 flex flex-col gap-2"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="flex items-center gap-3">
                         <input
                           type="checkbox"
-                          checked={p.seated}
-                          onChange={() =>
-                            setPreDinner((prev) =>
-                              prev.map((x) =>
-                                x.id === p.id ? { ...x, seated: !x.seated } : x
-                              )
-                            )
-                          }
+                          checked={p.arrived}
+                          onChange={(e) => setArrival(p.id, e.target.checked)}
                         />
                         <div>
                           <div className="text-sm font-semibold text-[#3B2620]">
                             {p.roomNumber ?? "—"} • {p.lastName}
+                            <span className="text-xs font-medium text-[#7B5A45]"> • Seat {p.seatTime}</span>
                           </div>
                           <div className="text-[11px] text-[#7B5A45]">
-                            Seat {p.seatTime} • {p.partySize} guests
+                            {p.partySize} guests
+                            {p.allergies ? ` • Allergy: ${p.allergies}` : ""}
+                            {p.notes ? ` • ${p.notes}` : ""}
                           </div>
                         </div>
-                      </div>
-                      <div className="text-[11px] text-[#7B5A45]">
-                        {p.assignedTableId
-                          ? `→ ${tables.find((t) => t.id === p.assignedTableId)?.tableNumber ?? "Table"}`
-                          : ""}
-                      </div>
-                    </label>
-                  ))}
-                </div>
+                      </label>
+
+                      <span
+                        className={[
+                          "text-[10px] px-2 py-1 rounded-full border",
+                          p.arrived
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                            : "bg-white border-slate-200 text-slate-600",
+                        ].join(" ")}
+                      >
+                        {p.arrived ? "Arrived" : "Pending"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <label className="text-[11px] font-semibold text-[#7B5A45]">
+                        Table
+                      </label>
+                      <select
+                        className="rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                        value={p.assignedTableNum ?? ""}
+                        onChange={(e) =>
+                          assignChecklistTable(
+                            p.id,
+                            e.target.value ? Number(e.target.value) : undefined
+                          )
+                        }
+                      >
+                        <option value="">—</option>
+                        {TABLE_NUMBERS.map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+
+                      <span className="text-[11px] text-[#7B5A45]">
+                        {p.assignedTableNum ? `Assigned: Table ${p.assignedTableNum}` : "Not assigned"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Selected table control panel */}
+            {/* Selected table */}
             <div className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm p-5">
               {selectedTable ? (
                 <>
@@ -889,7 +815,6 @@ export default function ServicePage() {
                       </p>
                     </div>
 
-                    {/* Advance / Back */}
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => backStep(selectedTable.id)}
@@ -910,27 +835,93 @@ export default function ServicePage() {
                     </div>
                   </div>
 
-                  {/* Step row */}
-                  <div className="flex flex-wrap gap-2 mb-4">
+                  {/* Step pills */}
+                  <div className="flex flex-wrap gap-2 mb-5">
                     {selectedTable.steps.map((s) => (
-                      <span key={s.key} className={stepColorClass(s)}>
+                      <span key={s.key} className={stepPillClass(s)}>
                         {s.label}
                       </span>
                     ))}
                   </div>
 
-                  {/* Cheese insert controls */}
-                  <div className="rounded-xl border border-[#F0E0CF] bg-white p-4 mb-5">
+                  {/* NEW: Served/Cleared toggles (second toggle) */}
+                  <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4 mb-6">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm font-semibold text-[#3B2620]">Add-ons</div>
-                        <div className="text-[11px] text-[#7B5A45] mt-0.5">
-                          Cheese course can be inserted anywhere guests want it.
-                        </div>
+                        <h3 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                          Course Tracking
+                        </h3>
+                        <p className="text-[11px] text-[#7B5A45] mt-0.5">
+                          Click once = Served. Click again = Cleared. Undo available.
+                        </p>
                       </div>
+                      <button
+                        onClick={() => undoCourse(selectedTable.id)}
+                        className="rounded-xl border px-3 py-2 text-xs font-semibold bg-white hover:bg-[#FDF8F2]"
+                        style={{ borderColor: BRAND.tanLight, color: BRAND.maroonDark }}
+                        title="Undo last course toggle"
+                      >
+                        Undo course
+                      </button>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                      {(["starter", "entree", "dessert"] as CourseKey[]).map((course) => (
+                        <button
+                          key={course}
+                          onClick={() => toggleCourse(selectedTable.id, course)}
+                          className="rounded-2xl border border-[#F0E0CF] bg-white p-4 text-left hover:bg-[#FDF8F2] transition"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-[#3B2620]">
+                              {course === "starter" ? "Starter" : course === "entree" ? "Entrée" : "Dessert"}
+                            </div>
+                            <span className={coursePhaseBadge(selectedTable.coursePhases[course])}>
+                              {selectedTable.coursePhases[course] === "not_started"
+                                ? "Not started"
+                                : selectedTable.coursePhases[course] === "served"
+                                ? "Served"
+                                : "Cleared"}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-[#7B5A45] mt-2">
+                            Click to advance: Not started → Served → Cleared
+                          </div>
+                        </button>
+                      ))}
+
+                      <button
+                        onClick={() => toggleCourse(selectedTable.id, "cheese")}
+                        disabled={!selectedTable.addOns.cheeseBoard}
+                        className={[
+                          "rounded-2xl border p-4 text-left transition",
+                          selectedTable.addOns.cheeseBoard
+                            ? "border-[#F0E0CF] bg-white hover:bg-[#FDF8F2]"
+                            : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed",
+                        ].join(" ")}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-semibold">
+                            Cheese course
+                          </div>
+                          <span className={coursePhaseBadge(selectedTable.coursePhases.cheese)}>
+                            {selectedTable.coursePhases.cheese === "not_started"
+                              ? "Not started"
+                              : selectedTable.coursePhases.cheese === "served"
+                              ? "Served"
+                              : "Cleared"}
+                          </span>
+                        </div>
+                        <div className="text-[11px] mt-2">
+                          {selectedTable.addOns.cheeseBoard
+                            ? "Click to mark served/cleared."
+                            : "Enable Cheese add-on to use this."}
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Add-ons */}
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                       <label className="flex items-center gap-2 text-sm text-[#3B2620]">
                         <input
                           type="checkbox"
@@ -956,66 +947,19 @@ export default function ServicePage() {
                         Dessert wine
                       </label>
                     </div>
-
-                    {selectedTable.addOns.cheeseBoard && (
-                      <div className="mt-4">
-                        <div className="text-xs font-semibold text-[#7B5A45] mb-2">
-                          Insert Cheese after:
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {(["wine", "starter", "entree", "dessert"] as StepKey[]).map((k) => (
-                            <button
-                              key={k}
-                              onClick={() => insertCheeseAfter(selectedTable.id, k)}
-                              className="rounded-xl border px-3 py-2 text-xs font-semibold bg-white hover:bg-[#FDF8F2]"
-                              style={{ borderColor: BRAND.tanLight, color: BRAND.maroonDark }}
-                            >
-                              {k === "wine" ? "Wine" : k === "starter" ? "Starter" : k === "entree" ? "Entrée" : "Dessert"}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Notes / allergies quick fields */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                    <div>
-                      <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Allergies / restrictions</label>
-                      <textarea
-                        value={selectedTable.allergies}
-                        onChange={(e) => updateSelected({ allergies: e.target.value })}
-                        rows={2}
-                        className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Service notes</label>
-                      <textarea
-                        value={selectedTable.notes}
-                        onChange={(e) => updateSelected({ notes: e.target.value })}
-                        rows={2}
-                        className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                        placeholder="Anniversary, pacing, pairing notes…"
-                      />
-                    </div>
                   </div>
 
                   {/* Expo timing */}
                   <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
-                          Expo Timing
-                        </h3>
-                        <p className="text-[11px] text-[#7B5A45] mt-0.5">
-                          Tap Called → Ready → Out to measure time per course.
-                        </p>
-                      </div>
-                    </div>
+                    <h3 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                      Expo Timing
+                    </h3>
+                    <p className="text-[11px] text-[#7B5A45] mt-0.5">
+                      Tap Called → Ready → Out to measure time per course.
+                    </p>
 
                     <div className="grid gap-3 mt-3">
-                      {(["starter", "entree", "dessert"] as CourseKey[]).map((course) => {
+                      {(["starter", "entree", "dessert"] as const).map((course) => {
                         const ex = selectedTable.expo[course];
                         return (
                           <div key={course} className="rounded-xl border border-[#F0E0CF] p-3">
@@ -1042,9 +986,7 @@ export default function ServicePage() {
                                 style={{ borderColor: BRAND.tanLight, color: BRAND.maroonDark }}
                               >
                                 Ready: {fmtTime(ex.readyAt)}{" "}
-                                <span className="font-normal text-[#7B5A45]">
-                                  ({dur(ex.calledAt, ex.readyAt)})
-                                </span>
+                                <span className="font-normal text-[#7B5A45]">({dur(ex.calledAt, ex.readyAt)})</span>
                               </button>
                               <button
                                 onClick={() => setExpoTime(selectedTable.id, course, "outAt")}
@@ -1052,9 +994,7 @@ export default function ServicePage() {
                                 style={{ borderColor: BRAND.tanLight, color: BRAND.maroonDark }}
                               >
                                 Out: {fmtTime(ex.outAt)}{" "}
-                                <span className="font-normal text-[#7B5A45]">
-                                  ({dur(ex.readyAt, ex.outAt)})
-                                </span>
+                                <span className="font-normal text-[#7B5A45]">({dur(ex.readyAt, ex.outAt)})</span>
                               </button>
                             </div>
                           </div>
@@ -1062,15 +1002,9 @@ export default function ServicePage() {
                       })}
                     </div>
                   </div>
-
-                  <p className="text-[11px] text-[#7B5A45] mt-4">
-                    Next step: we’ll persist tables, guests, and timing to your backend so it survives refresh and can generate reports.
-                  </p>
                 </>
               ) : (
-                <p className="text-sm text-[#7B5A45]">
-                  Select a table on the left to view controls.
-                </p>
+                <p className="text-sm text-[#7B5A45]">Select a table on the left.</p>
               )}
             </div>
           </section>
