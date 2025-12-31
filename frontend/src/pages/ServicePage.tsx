@@ -2,6 +2,22 @@
 import { useMemo, useState } from "react";
 import MainLayout from "@/layouts/MainLayout";
 
+type ServiceTab = "pre" | "dinner";
+
+type StepKey =
+  | "seated"
+  | "bread_water"
+  | "wine"
+  | "starter"
+  | "entree"
+  | "dessert"
+  | "canoe"
+  | "cheese";
+
+type StepStatus = "todo" | "active" | "done";
+
+type CourseKey = "starter" | "entree" | "dessert";
+
 type ProteinDoneness =
   | "rare"
   | "medium-rare"
@@ -10,1238 +26,1056 @@ type ProteinDoneness =
   | "well"
   | "n/a";
 
-type DiningArea = "Dining Room" | "In-Room";
+interface Step {
+  key: StepKey;
+  label: string;
+  status: StepStatus;
+  // When this step was marked done (optional)
+  doneAt?: number;
+}
 
-type CourseKey = "welcome" | "first" | "main" | "dessert" | "coffee" | "digestif";
-
-type CourseStatus = {
-  servedAt?: string; // e.g. "6:18 PM"
-  clearedAt?: string;
-};
-
-type AddOns = {
-  sparklingWater: boolean;
-  cheeseCourse: boolean;
-  dessertWine: boolean;
-  btgNotes: string; // wine by the glass notes
-  bottleNotes: string; // bottle notes
-};
+interface ExpoTiming {
+  calledAt?: number;
+  readyAt?: number;
+  outAt?: number;
+}
 
 interface ServiceTable {
   id: number;
   tableNumber: string;
-
-  // Seating info
-  diningArea: DiningArea;
-  time: string; // scheduled seating time (or actual)
   roomNumber?: string;
-
   guestName: string;
   guestsCount: number;
-
-  // Notes
-  occasion: string;
+  seatTime?: string; // e.g. "6:30"
+  notes: string;
+  drinks: string;
+  addOns: {
+    cheeseBoard: boolean;
+    sparklingWater: boolean;
+    dessertWine: boolean;
+  };
   allergies: string;
   substitutions: string;
-  notes: string;
-
-  // Service-specific
   protein: ProteinDoneness;
-  drinks: string; // general drink notes
-  addOns: AddOns;
 
-  courses: Record<CourseKey, CourseStatus>;
+  // New service UX state
+  steps: Step[];
+  expo: Record<CourseKey, ExpoTiming>;
+  // for quick “undo”
+  history: StepKey[]; // sequence of completed steps
 }
 
-type Reservation = {
-  id: string;
-  diningArea: DiningArea;
-  time: string;
+interface Guest {
+  id: number;
+  lastName: string;
+  firstName?: string;
   roomNumber?: string;
-  guestName: string;
-  guestsCount: number;
-  occasion: string;
-  allergies: string;
-  notes: string;
-
-  // seating
-  seatedTableId?: number;
-};
-
-type GuestProfile = {
-  id: string;
-  name: string;
-  defaultAllergies?: string;
   notes?: string;
+  allergies?: string;
+}
+
+interface PreDinnerItem {
+  id: number;
+  lastName: string;
+  roomNumber?: string;
+  partySize: number;
+  seatTime: string;
+  notes?: string;
+  allergies?: string;
+  // seating state
+  seated: boolean;
+  assignedTableId?: number;
+}
+
+const BRAND = {
+  maroon: "#6B1F2F",
+  maroonDark: "#4A1520",
+  tan: "#D4AF88",
+  tanLight: "#E8D4B8",
+  cream: "#FDF8F2",
+  ink: "#3B2620",
+  muted: "#7B5A45",
 };
 
-const BRAND_PRIMARY = "#6B1F2F";
-const BRAND_TEXT = "#3B2620";
-const BRAND_MUTED = "#7B5A45";
-const BRAND_BORDER = "#E8D4B8";
-const BRAND_SOFT = "#FDF8F2";
-const BRAND_DIVIDER = "#F0E0CF";
+const baseStepTemplate: Array<{ key: StepKey; label: string }> = [
+  { key: "seated", label: "Seated" },
+  { key: "bread_water", label: "Bread + Water" },
+  { key: "wine", label: "Wine" },
+  { key: "starter", label: "Starter" },
+  { key: "entree", label: "Entrée" },
+  { key: "dessert", label: "Dessert" },
+  { key: "canoe", label: "Canoe" },
+];
 
-function nowTimeLabel(): string {
-  // Simple readable time label for local actions
-  const d = new Date();
+// --- helpers ---
+function nowMs() {
+  return Date.now();
+}
+function fmtTime(ms?: number) {
+  if (!ms) return "—";
+  const d = new Date(ms);
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
-
-function emptyCourses(): Record<CourseKey, CourseStatus> {
-  return {
-    welcome: {},
-    first: {},
-    main: {},
-    dessert: {},
-    coffee: {},
-    digestif: {},
-  };
+function dur(msStart?: number, msEnd?: number) {
+  if (!msStart || !msEnd) return "—";
+  const diff = Math.max(0, msEnd - msStart);
+  const mins = Math.floor(diff / 60000);
+  const secs = Math.floor((diff % 60000) / 1000);
+  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }
 
+function buildSteps(cheeseEnabled: boolean, insertAfter?: StepKey): Step[] {
+  const base: Step[] = baseStepTemplate.map((s, idx) => ({
+    key: s.key,
+    label: s.label,
+    status: idx === 0 ? "active" : "todo",
+  }));
+
+  if (!cheeseEnabled) return base;
+
+  // insert default after wine unless specified
+  const afterKey = insertAfter ?? "wine";
+  const insertIdx = Math.min(
+    base.length,
+    Math.max(0, base.findIndex((x) => x.key === afterKey) + 1)
+  );
+
+  const cheeseStep: Step = {
+    key: "cheese",
+    label: "Cheese",
+    status: "todo",
+  };
+
+  const next = [...base.slice(0, insertIdx), cheeseStep, ...base.slice(insertIdx)];
+  return next;
+}
+
+function getActiveIndex(steps: Step[]) {
+  const idx = steps.findIndex((s) => s.status === "active");
+  // If none active (edge case), pick first todo
+  if (idx === -1) return steps.findIndex((s) => s.status === "todo");
+  return idx;
+}
+
+function stepColorClass(step: Step) {
+  // Color-coded by step type + state
+  // We keep it simple with Tailwind utility classes
+  const base = "px-2 py-1 rounded-full text-[11px] font-medium border";
+  if (step.status === "done") return `${base} bg-emerald-50 border-emerald-200 text-emerald-800`;
+  if (step.status === "active") {
+    if (step.key === "entree") return `${base} bg-amber-50 border-amber-200 text-amber-900`;
+    if (step.key === "starter") return `${base} bg-sky-50 border-sky-200 text-sky-900`;
+    if (step.key === "dessert") return `${base} bg-violet-50 border-violet-200 text-violet-900`;
+    if (step.key === "wine") return `${base} bg-rose-50 border-rose-200 text-rose-900`;
+    if (step.key === "cheese") return `${base} bg-yellow-50 border-yellow-200 text-yellow-900`;
+    return `${base} bg-slate-50 border-slate-200 text-slate-900`;
+  }
+  return `${base} bg-white border-slate-200 text-slate-500`;
+}
+
+// --- initial data ---
 const initialTables: ServiceTable[] = [
   {
     id: 1,
     tableNumber: "T1",
-    diningArea: "Dining Room",
-    time: "6:30 PM",
     roomNumber: "Cabin 3",
     guestName: "Smith",
     guestsCount: 2,
-    occasion: "Anniversary",
+    seatTime: "6:30",
     notes: "",
     drinks: "",
-    addOns: {
-      cheeseCourse: false,
-      sparklingWater: false,
-      dessertWine: false,
-      btgNotes: "",
-      bottleNotes: "",
-    },
+    addOns: { cheeseBoard: false, sparklingWater: false, dessertWine: false },
     allergies: "",
     substitutions: "",
     protein: "medium-rare",
-    courses: emptyCourses(),
+    steps: buildSteps(false),
+    expo: { starter: {}, entree: {}, dessert: {} },
+    history: [],
   },
   {
     id: 2,
     tableNumber: "T2",
-    diningArea: "Dining Room",
-    time: "6:45 PM",
     roomNumber: "Cabin 7",
     guestName: "Johnson",
     guestsCount: 4,
-    occasion: "",
-    notes: "",
+    seatTime: "6:45",
+    notes: "Anniversary",
     drinks: "",
-    addOns: {
-      cheeseCourse: true,
-      sparklingWater: false,
-      dessertWine: false,
-      btgNotes: "2x Pinot Noir BTG",
-      bottleNotes: "",
-    },
+    addOns: { cheeseBoard: true, sparklingWater: false, dessertWine: false },
     allergies: "No nuts",
     substitutions: "",
     protein: "medium",
-    courses: emptyCourses(),
+    steps: buildSteps(true),
+    expo: { starter: {}, entree: {}, dessert: {} },
+    history: [],
   },
   {
     id: 3,
     tableNumber: "T3",
-    diningArea: "In-Room",
-    time: "7:00 PM",
     roomNumber: "Suite 1",
     guestName: "Taylor",
     guestsCount: 2,
-    occasion: "",
+    seatTime: "7:00",
     notes: "",
     drinks: "",
-    addOns: {
-      cheeseCourse: false,
-      sparklingWater: true,
-      dessertWine: false,
-      btgNotes: "",
-      bottleNotes: "Sonoma-Cutrer",
-    },
+    addOns: { cheeseBoard: false, sparklingWater: true, dessertWine: false },
     allergies: "",
     substitutions: "No onion in sauce",
     protein: "medium-rare",
-    courses: emptyCourses(),
+    steps: buildSteps(false),
+    expo: { starter: {}, entree: {}, dessert: {} },
+    history: [],
   },
 ];
 
-const initialGuests: GuestProfile[] = [
-  { id: "g1", name: "Smith", defaultAllergies: "", notes: "Enjoys Burgundy" },
-  { id: "g2", name: "Johnson", defaultAllergies: "No nuts", notes: "" },
-  { id: "g3", name: "Taylor", defaultAllergies: "", notes: "Prefers dry whites" },
-  { id: "g4", name: "Conway", defaultAllergies: "", notes: "" },
+const initialPreDinner: PreDinnerItem[] = [
+  { id: 101, lastName: "Barnes", roomNumber: "Cabin 3", partySize: 2, seatTime: "6:30", notes: "Anniversary; enjoys Burgundy", seated: false },
+  { id: 102, lastName: "Fynn", roomNumber: "Cabin 7", partySize: 4, seatTime: "6:30", notes: "One guest gluten-free", seated: false },
+  { id: 103, lastName: "Paris", roomNumber: "V8", partySize: 2, seatTime: "6:45", notes: "No mushrooms", seated: false },
+  { id: 104, lastName: "Reynolds", roomNumber: "V3", partySize: 2, seatTime: "7:00", notes: "", seated: false },
 ];
 
-const initialReservations: Reservation[] = [
-  {
-    id: "r1",
-    diningArea: "Dining Room",
-    time: "6:30 PM",
-    roomNumber: "Cabin 3",
-    guestName: "Smith",
-    guestsCount: 2,
-    occasion: "Anniversary",
-    allergies: "",
-    notes: "Enjoys Burgundy.",
-  },
-  {
-    id: "r2",
-    diningArea: "Dining Room",
-    time: "6:45 PM",
-    roomNumber: "Cabin 7",
-    guestName: "Johnson",
-    guestsCount: 4,
-    occasion: "",
-    allergies: "No nuts",
-    notes: "",
-  },
-  {
-    id: "r3",
-    diningArea: "In-Room",
-    time: "7:00 PM",
-    roomNumber: "Suite 1",
-    guestName: "Taylor",
-    guestsCount: 2,
-    occasion: "",
-    allergies: "",
-    notes: "No onion in sauce.",
-  },
-];
-
-const COURSE_LABELS: Array<{ key: CourseKey; label: string }> = [
-  { key: "welcome", label: "Welcome" },
-  { key: "first", label: "1st" },
-  { key: "main", label: "Main" },
-  { key: "dessert", label: "Dessert" },
-  { key: "coffee", label: "Coffee" },
-  { key: "digestif", label: "Digestif" },
+const initialGuests: Guest[] = [
+  { id: 1, lastName: "Barnes", firstName: "Gary", roomNumber: "Cabin 3", notes: "Anniversary; Burgundy", allergies: "" },
+  { id: 2, lastName: "Fynn", firstName: "Conway", roomNumber: "Cabin 7", notes: "GF", allergies: "gluten" },
+  { id: 3, lastName: "Paris", firstName: "", roomNumber: "V8", notes: "No mush", allergies: "" },
 ];
 
 export default function ServicePage() {
-  const [tables, setTables] = useState<ServiceTable[]>(initialTables);
-  const [selectedId, setSelectedId] = useState<number | null>(
-    initialTables[0]?.id ?? null
-  );
+  const [tab, setTab] = useState<ServiceTab>("dinner");
 
-  const [guests, setGuests] = useState<GuestProfile[]>(initialGuests);
-  const [guestSearch, setGuestSearch] = useState("");
-  const [reservations, setReservations] = useState<Reservation[]>(initialReservations);
-
-  // Add table form
-  const [newTableNumber, setNewTableNumber] = useState("");
-  const [newTableArea, setNewTableArea] = useState<DiningArea>("Dining Room");
-
-  // Add reservation form (pre-dinner list)
-  const [resForm, setResForm] = useState<Omit<Reservation, "id">>({
-    diningArea: "Dining Room",
-    time: "6:30 PM",
-    roomNumber: "",
-    guestName: "",
-    guestsCount: 2,
-    occasion: "",
-    allergies: "",
-    notes: "",
-    seatedTableId: undefined,
+  const [tables, setTables] = useState<ServiceTable[]>(() => {
+    // Ensure tables with cheese add-on get steps built with cheese
+    return initialTables.map((t) => ({
+      ...t,
+      steps: buildSteps(t.addOns.cheeseBoard),
+    }));
   });
 
+  const [selectedId, setSelectedId] = useState<number | null>(initialTables[0]?.id ?? null);
   const selectedTable = tables.find((t) => t.id === selectedId) ?? null;
 
-  const unseatedReservations = useMemo(
-    () => reservations.filter((r) => !r.seatedTableId),
-    [reservations]
-  );
+  const [preDinner, setPreDinner] = useState<PreDinnerItem[]>(initialPreDinner);
+  const [guests, setGuests] = useState<Guest[]>(initialGuests);
 
-  const availableTables = useMemo(
-    () =>
-      tables
-        .slice()
-        .sort((a, b) => a.tableNumber.localeCompare(b.tableNumber)),
-    [tables]
-  );
+  // Guest DB UI state
+  const [guestSearch, setGuestSearch] = useState("");
+  const [newGuestLast, setNewGuestLast] = useState("");
+  const [newGuestFirst, setNewGuestFirst] = useState("");
+  const [newGuestRoom, setNewGuestRoom] = useState("");
+  const [newGuestNotes, setNewGuestNotes] = useState("");
+  const [newGuestAllergies, setNewGuestAllergies] = useState("");
 
   const filteredGuests = useMemo(() => {
     const q = guestSearch.trim().toLowerCase();
     if (!q) return guests;
-    return guests.filter((g) => g.name.toLowerCase().includes(q));
+    return guests.filter((g) =>
+      [g.lastName, g.firstName ?? "", g.roomNumber ?? ""].join(" ").toLowerCase().includes(q)
+    );
   }, [guests, guestSearch]);
+
+  // --- table update helpers ---
+  const updateTable = (id: number, patch: Partial<ServiceTable>) => {
+    setTables((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, ...patch } : t))
+    );
+  };
 
   const updateSelected = (patch: Partial<ServiceTable>) => {
     if (!selectedTable) return;
-    setTables((prev) =>
-      prev.map((t) =>
-        t.id === selectedTable.id
-          ? {
-              ...t,
-              ...patch,
-              addOns: patch.addOns ?? t.addOns,
-              courses: patch.courses ?? t.courses,
-            }
-          : t
-      )
-    );
-  };
-
-  const toggleAddOn = (field: keyof AddOns) => {
-    if (!selectedTable) return;
-    setTables((prev) =>
-      prev.map((t) =>
-        t.id === selectedTable.id
-          ? {
-              ...t,
-              addOns: {
-                ...t.addOns,
-                [field]: typeof t.addOns[field] === "boolean" ? !t.addOns[field] : t.addOns[field],
-              } as AddOns,
-            }
-          : t
-      )
-    );
-  };
-
-  const setAddOnText = (field: "btgNotes" | "bottleNotes", value: string) => {
-    if (!selectedTable) return;
-    updateSelected({
-      addOns: { ...selectedTable.addOns, [field]: value },
+    updateTable(selectedTable.id, {
+      ...patch,
+      addOns: patch.addOns ?? selectedTable.addOns,
     });
   };
 
-  const addTable = () => {
-    const num = newTableNumber.trim();
-    if (!num) return;
-
-    const nextId = Math.max(0, ...tables.map((t) => t.id)) + 1;
-
-    const newT: ServiceTable = {
-      id: nextId,
-      tableNumber: num,
-      diningArea: newTableArea,
-      time: "",
-      roomNumber: "",
-      guestName: "",
-      guestsCount: 2,
-      occasion: "",
-      allergies: "",
-      substitutions: "",
-      notes: "",
-      protein: "n/a",
-      drinks: "",
-      addOns: {
-        sparklingWater: false,
-        cheeseCourse: false,
-        dessertWine: false,
-        btgNotes: "",
-        bottleNotes: "",
-      },
-      courses: emptyCourses(),
+  const toggleAddOn = (field: keyof ServiceTable["addOns"]) => {
+    if (!selectedTable) return;
+    const nextAddOns = {
+      ...selectedTable.addOns,
+      [field]: !selectedTable.addOns[field],
     };
 
-    setTables((prev) => [...prev, newT]);
-    setNewTableNumber("");
-    setSelectedId(newT.id);
+    // If cheese toggled ON/OFF, rebuild steps while preserving progress where possible
+    if (field === "cheeseBoard") {
+      const cheeseOn = nextAddOns.cheeseBoard;
+
+      const prevSteps = selectedTable.steps;
+      const prevDoneKeys = prevSteps.filter((s) => s.status === "done").map((s) => s.key);
+      const prevActiveKey = prevSteps.find((s) => s.status === "active")?.key;
+
+      let nextSteps = buildSteps(cheeseOn);
+      // Re-apply done statuses
+      nextSteps = nextSteps.map((s) => ({
+        ...s,
+        status: prevDoneKeys.includes(s.key) ? "done" : "todo",
+      }));
+
+      // Re-apply active key if it still exists, else set first todo active
+      if (prevActiveKey && nextSteps.some((s) => s.key === prevActiveKey)) {
+        nextSteps = nextSteps.map((s) => ({
+          ...s,
+          status: s.key === prevActiveKey ? "active" : s.status === "done" ? "done" : "todo",
+        }));
+      } else {
+        const firstTodo = nextSteps.findIndex((s) => s.status === "todo");
+        nextSteps = nextSteps.map((s, i) => ({
+          ...s,
+          status: s.status === "done" ? "done" : i === (firstTodo === -1 ? 0 : firstTodo) ? "active" : "todo",
+        }));
+      }
+
+      updateSelected({ addOns: nextAddOns, steps: nextSteps });
+      return;
+    }
+
+    updateSelected({ addOns: nextAddOns });
   };
 
-  const addGuestToDatabase = (name: string) => {
-    const n = name.trim();
-    if (!n) return;
-    const exists = guests.some((g) => g.name.toLowerCase() === n.toLowerCase());
-    if (exists) return;
+  // --- service step actions ---
+  const advanceStep = (tableId: number) => {
+    setTables((prev) =>
+      prev.map((t) => {
+        if (t.id !== tableId) return t;
+
+        const steps = [...t.steps];
+        const activeIdx = getActiveIndex(steps);
+        if (activeIdx === -1) return t;
+
+        const active = steps[activeIdx];
+        // mark active done
+        steps[activeIdx] = { ...active, status: "done", doneAt: nowMs() };
+        const history = [...t.history, active.key];
+
+        // next active
+        const nextIdx = steps.findIndex((s) => s.status === "todo");
+        if (nextIdx !== -1) {
+          steps[nextIdx] = { ...steps[nextIdx], status: "active" };
+        }
+
+        return { ...t, steps, history };
+      })
+    );
+  };
+
+  const backStep = (tableId: number) => {
+    // Undo last completed step, and make it active again
+    setTables((prev) =>
+      prev.map((t) => {
+        if (t.id !== tableId) return t;
+        if (t.history.length === 0) return t;
+
+        const lastDoneKey = t.history[t.history.length - 1];
+        const history = t.history.slice(0, -1);
+
+        const steps = t.steps.map((s) => {
+          // clear any current active (we'll set new active below)
+          if (s.status === "active") return { ...s, status: "todo" };
+          return s;
+        });
+
+        const idx = steps.findIndex((s) => s.key === lastDoneKey);
+        if (idx === -1) return { ...t, history };
+
+        // turn that done step back into active
+        steps[idx] = { ...steps[idx], status: "active", doneAt: undefined };
+
+        // Any steps after it that were todo remain todo; steps before stay done as is.
+        // Ensure no duplicate actives:
+        return { ...t, steps, history };
+      })
+    );
+  };
+
+  const insertCheeseAfter = (tableId: number, after: StepKey) => {
+    setTables((prev) =>
+      prev.map((t) => {
+        if (t.id !== tableId) return t;
+        if (!t.addOns.cheeseBoard) return t;
+
+        const prevSteps = t.steps;
+        const prevDone = prevSteps.filter((s) => s.status === "done").map((s) => s.key);
+        const prevActiveKey = prevSteps.find((s) => s.status === "active")?.key;
+
+        let nextSteps = buildSteps(true, after);
+
+        // restore done statuses (only for keys that still exist)
+        nextSteps = nextSteps.map((s) => ({
+          ...s,
+          status: prevDone.includes(s.key) ? "done" : "todo",
+        }));
+
+        // restore active
+        if (prevActiveKey && nextSteps.some((s) => s.key === prevActiveKey)) {
+          nextSteps = nextSteps.map((s) => ({
+            ...s,
+            status: s.key === prevActiveKey ? "active" : s.status === "done" ? "done" : "todo",
+          }));
+        } else {
+          const firstTodo = nextSteps.findIndex((s) => s.status === "todo");
+          nextSteps = nextSteps.map((s, i) => ({
+            ...s,
+            status: s.status === "done" ? "done" : i === (firstTodo === -1 ? 0 : firstTodo) ? "active" : "todo",
+          }));
+        }
+
+        return { ...t, steps: nextSteps };
+      })
+    );
+  };
+
+  // --- Expo timing actions ---
+  const setExpoTime = (tableId: number, course: CourseKey, field: keyof ExpoTiming) => {
+    const ts = nowMs();
+    setTables((prev) =>
+      prev.map((t) => {
+        if (t.id !== tableId) return t;
+        return {
+          ...t,
+          expo: {
+            ...t.expo,
+            [course]: {
+              ...t.expo[course],
+              [field]: ts,
+            },
+          },
+        };
+      })
+    );
+  };
+
+  // --- Pre-dinner actions ---
+  const seatPreDinnerItem = (itemId: number, tableId: number) => {
+    const table = tables.find((t) => t.id === tableId);
+    const item = preDinner.find((p) => p.id === itemId);
+    if (!table || !item) return;
+
+    // mark preDinner item seated + assigned
+    setPreDinner((prev) =>
+      prev.map((p) =>
+        p.id === itemId ? { ...p, seated: true, assignedTableId: tableId } : p
+      )
+    );
+
+    // update table data quickly
+    setTables((prev) =>
+      prev.map((t) => {
+        if (t.id !== tableId) return t;
+        return {
+          ...t,
+          guestName: item.lastName,
+          roomNumber: item.roomNumber ?? t.roomNumber,
+          guestsCount: item.partySize,
+          seatTime: item.seatTime,
+          notes: item.notes ?? t.notes,
+          allergies: item.allergies ?? t.allergies,
+          // also set step active to Seated (fresh start)
+          steps: buildSteps(t.addOns.cheeseBoard).map((s, idx) => ({
+            ...s,
+            status: idx === 0 ? "active" : "todo",
+          })),
+          history: [],
+          expo: { starter: {}, entree: {}, dessert: {} },
+        };
+      })
+    );
+  };
+
+  const addGuest = () => {
+    const last = newGuestLast.trim();
+    if (!last) return;
 
     setGuests((prev) => [
-      { id: `g_${Date.now()}`, name: n, defaultAllergies: "", notes: "" },
+      {
+        id: Math.max(0, ...prev.map((g) => g.id)) + 1,
+        lastName: last,
+        firstName: newGuestFirst.trim() || undefined,
+        roomNumber: newGuestRoom.trim() || undefined,
+        notes: newGuestNotes.trim() || undefined,
+        allergies: newGuestAllergies.trim() || undefined,
+      },
       ...prev,
     ]);
+
+    setNewGuestLast("");
+    setNewGuestFirst("");
+    setNewGuestRoom("");
+    setNewGuestNotes("");
+    setNewGuestAllergies("");
   };
 
-  const addReservation = () => {
-    const name = resForm.guestName.trim();
-    if (!name) return;
-
-    // Add to guest database automatically if new
-    addGuestToDatabase(name);
-
-    const newRes: Reservation = {
-      ...resForm,
-      id: `r_${Date.now()}`,
-      guestName: name,
-      roomNumber: resForm.roomNumber?.trim() || "",
-      occasion: resForm.occasion?.trim() || "",
-      allergies: resForm.allergies?.trim() || "",
-      notes: resForm.notes?.trim() || "",
-    };
-
-    setReservations((prev) => [newRes, ...prev]);
-
-    // keep name for rapid entry, clear the rest lightly
-    setResForm((p) => ({
-      ...p,
-      guestsCount: 2,
-      roomNumber: "",
-      occasion: "",
-      allergies: "",
-      notes: "",
-      seatedTableId: undefined,
-    }));
-  };
-
-  const seatReservationToTable = (reservationId: string, tableId: number) => {
-    const res = reservations.find((r) => r.id === reservationId);
-    const table = tables.find((t) => t.id === tableId);
-    if (!res || !table) return;
-
-    // Update table with reservation info
-    setTables((prev) =>
-      prev.map((t) =>
-        t.id === tableId
-          ? {
-              ...t,
-              diningArea: res.diningArea,
-              time: res.time,
-              roomNumber: res.roomNumber || t.roomNumber,
-              guestName: res.guestName,
-              guestsCount: res.guestsCount,
-              occasion: res.occasion,
-              allergies: res.allergies,
-              notes: res.notes,
-            }
-          : t
-      )
-    );
-
-    // Mark reservation seated
-    setReservations((prev) =>
-      prev.map((r) => (r.id === reservationId ? { ...r, seatedTableId: tableId } : r))
-    );
-
-    setSelectedId(tableId);
-  };
-
-  const unseatTable = (tableId: number) => {
-    // Find reservation seated here, if any
-    const res = reservations.find((r) => r.seatedTableId === tableId);
-    if (res) {
-      setReservations((prev) =>
-        prev.map((r) => (r.id === res.id ? { ...r, seatedTableId: undefined } : r))
-      );
-    }
-
-    // Clear table details (keep table number/area)
-    setTables((prev) =>
-      prev.map((t) =>
-        t.id === tableId
-          ? {
-              ...t,
-              time: "",
-              roomNumber: "",
-              guestName: "",
-              guestsCount: 2,
-              occasion: "",
-              allergies: "",
-              substitutions: "",
-              notes: "",
-              drinks: "",
-              protein: "n/a",
-              addOns: {
-                sparklingWater: false,
-                cheeseCourse: false,
-                dessertWine: false,
-                btgNotes: "",
-                bottleNotes: "",
-              },
-              courses: emptyCourses(),
-            }
-          : t
-      )
-    );
-  };
-
-  const cycleCourse = (course: CourseKey) => {
-    if (!selectedTable) return;
-
-    const current = selectedTable.courses[course] ?? {};
-    const now = nowTimeLabel();
-
-    let next: CourseStatus;
-    if (!current.servedAt) {
-      next = { servedAt: now };
-    } else if (!current.clearedAt) {
-      next = { ...current, clearedAt: now };
-    } else {
-      next = {};
-    }
-
-    updateSelected({
-      courses: {
-        ...selectedTable.courses,
-        [course]: next,
-      },
-    });
-  };
-
-  const resetAllCourses = () => {
-    if (!selectedTable) return;
-    updateSelected({ courses: emptyCourses() });
-  };
-
-  const courseChip = (course: CourseKey) => {
-    if (!selectedTable) return null;
-    const st = selectedTable.courses[course];
-    if (!st?.servedAt) return { label: "—", cls: "bg-white text-[#7B5A45] border border-[#E8D4B8]" };
-    if (st.servedAt && !st.clearedAt)
-      return { label: `Served ${st.servedAt}`, cls: "bg-[#FFF8E3] text-[#8B5A12] border border-[#F0E0CF]" };
-    return { label: `Cleared ${st.clearedAt}`, cls: "bg-[#EAF7ED] text-[#1F6B3A] border border-[#CFE7D6]" };
-  };
+  // --- Derived lists for dinner view ---
+  const dinnerChecklist = useMemo(() => {
+    // show preDinner items for tonight as a compact checklist
+    return [...preDinner].sort((a, b) => a.seatTime.localeCompare(b.seatTime));
+  }, [preDinner]);
 
   return (
-    <MainLayout title="Dinner Service" subtitle="Pre-dinner list, tables, add-ons, and service tracking">
-      <div className="grid gap-6 lg:grid-cols-12">
-        {/* LEFT: Pre-dinner list + guest database */}
-        <section className="lg:col-span-4 space-y-6">
-          {/* Pre-Dinner List */}
-          <div className="rounded-2xl bg-white/90 border shadow-sm overflow-hidden" style={{ borderColor: BRAND_BORDER }}>
-            <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: BRAND_BORDER }}>
+    <MainLayout title="Dinner Service" subtitle="Pre-dinner planning + live service controls">
+      {/* Tabs */}
+      <div className="flex items-center gap-2 mb-5">
+        <button
+          onClick={() => setTab("pre")}
+          className={[
+            "px-3 py-2 rounded-xl border text-sm font-semibold transition",
+            tab === "pre"
+              ? "bg-white border-[#E8D4B8] text-[#4A1520]"
+              : "bg-transparent border-transparent text-slate-500 hover:bg-white/60",
+          ].join(" ")}
+        >
+          Pre-Dinner
+        </button>
+        <button
+          onClick={() => setTab("dinner")}
+          className={[
+            "px-3 py-2 rounded-xl border text-sm font-semibold transition",
+            tab === "dinner"
+              ? "bg-white border-[#E8D4B8] text-[#4A1520]"
+              : "bg-transparent border-transparent text-slate-500 hover:bg-white/60",
+          ].join(" ")}
+        >
+          Dinner Service
+        </button>
+      </div>
+
+      {tab === "pre" ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Pre-dinner list */}
+          <section className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-[#E8D4B8] flex items-center justify-between">
               <div>
-                <h2
-                  className="text-sm font-semibold"
-                  style={{ color: BRAND_PRIMARY, fontFamily: "Playfair Display, Georgia, serif" }}
-                >
+                <h2 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
                   Pre-Dinner List
                 </h2>
-                <p className="text-[11px] mt-0.5" style={{ color: BRAND_MUTED }}>
-                  Unseated guests for tonight • assign to a table fast
+                <p className="text-[11px] text-[#7B5A45] mt-0.5">
+                  Quick seat assignments — pick a table and click Seat
                 </p>
               </div>
-              <span className="text-[11px]" style={{ color: BRAND_MUTED }}>
-                {unseatedReservations.length} unseated
+              <span className="text-[11px] text-[#7B5A45]">
+                {preDinner.filter((p) => !p.seated).length} pending
               </span>
             </div>
 
-            {/* Add reservation */}
-            <div className="p-4 border-b" style={{ borderColor: BRAND_DIVIDER }}>
-              <div className="grid grid-cols-12 gap-2">
-                <div className="col-span-12">
-                  <label className="block text-[11px] font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                    Guest name
-                  </label>
-                  <input
-                    value={resForm.guestName}
-                    onChange={(e) => setResForm((p) => ({ ...p, guestName: e.target.value }))}
-                    className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                    placeholder="Last name or party name"
-                  />
-                </div>
+            <div className="divide-y divide-[#F0E0CF]">
+              {preDinner
+                .slice()
+                .sort((a, b) => a.seatTime.localeCompare(b.seatTime))
+                .map((p) => (
+                  <div key={p.id} className="px-4 py-3 flex flex-col gap-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-[#3B2620]">
+                          {p.lastName}{" "}
+                          <span className="text-xs font-medium text-[#7B5A45]">
+                            • {p.partySize} {p.partySize === 1 ? "guest" : "guests"}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[#7B5A45] mt-0.5">
+                          {p.roomNumber ?? "No room #"} • Seat {p.seatTime}
+                        </div>
+                        {(p.notes || p.allergies) && (
+                          <div className="text-[11px] text-[#7B5A45] mt-1">
+                            {p.allergies ? `Allergy: ${p.allergies}. ` : ""}
+                            {p.notes ?? ""}
+                          </div>
+                        )}
+                      </div>
 
-                <div className="col-span-6">
-                  <label className="block text-[11px] font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                    Time
-                  </label>
-                  <input
-                    value={resForm.time}
-                    onChange={(e) => setResForm((p) => ({ ...p, time: e.target.value }))}
-                    className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                    placeholder="6:30 PM"
-                  />
-                </div>
+                      <span
+                        className={[
+                          "text-[10px] px-2 py-1 rounded-full border",
+                          p.seated
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                            : "bg-white border-slate-200 text-slate-600",
+                        ].join(" ")}
+                      >
+                        {p.seated ? "Seated" : "Pending"}
+                      </span>
+                    </div>
 
-                <div className="col-span-6">
-                  <label className="block text-[11px] font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                    Area
-                  </label>
-                  <select
-                    value={resForm.diningArea}
-                    onChange={(e) => setResForm((p) => ({ ...p, diningArea: e.target.value as DiningArea }))}
-                    className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                  >
-                    <option value="Dining Room">Dining Room</option>
-                    <option value="In-Room">In-Room</option>
-                  </select>
-                </div>
+                    {!p.seated && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          className="rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                          defaultValue={tables[0]?.id ?? ""}
+                          onChange={(e) => seatPreDinnerItem(p.id, Number(e.target.value))}
+                        >
+                          {tables.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.tableNumber} ({t.roomNumber ?? "—"})
+                            </option>
+                          ))}
+                        </select>
 
-                <div className="col-span-6">
-                  <label className="block text-[11px] font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                    Party size
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={resForm.guestsCount}
-                    onChange={(e) => setResForm((p) => ({ ...p, guestsCount: Number(e.target.value || 1) }))}
-                    className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                  />
-                </div>
+                        <span className="text-[11px] text-[#7B5A45]">
+                          Tip: selecting a table auto-seats and fills it.
+                        </span>
+                      </div>
+                    )}
 
-                <div className="col-span-6">
-                  <label className="block text-[11px] font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                    Room / cabin
-                  </label>
-                  <input
-                    value={resForm.roomNumber ?? ""}
-                    onChange={(e) => setResForm((p) => ({ ...p, roomNumber: e.target.value }))}
-                    className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                    placeholder="Cabin 3 / Suite 1"
-                  />
-                </div>
-
-                <div className="col-span-12">
-                  <label className="block text-[11px] font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                    Allergies / occasion / notes (quick)
-                  </label>
-                  <div className="grid grid-cols-12 gap-2">
-                    <input
-                      value={resForm.allergies}
-                      onChange={(e) => setResForm((p) => ({ ...p, allergies: e.target.value }))}
-                      className="col-span-6 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                      placeholder="Allergies"
-                    />
-                    <input
-                      value={resForm.occasion}
-                      onChange={(e) => setResForm((p) => ({ ...p, occasion: e.target.value }))}
-                      className="col-span-6 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                      placeholder="Occasion"
-                    />
-                    <input
-                      value={resForm.notes}
-                      onChange={(e) => setResForm((p) => ({ ...p, notes: e.target.value }))}
-                      className="col-span-12 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                      placeholder="Notes (pairing prefs, pacing, etc.)"
-                    />
+                    {p.seated && p.assignedTableId && (
+                      <div className="text-[11px] text-[#7B5A45]">
+                        Assigned to{" "}
+                        <button
+                          className="font-semibold underline"
+                          onClick={() => {
+                            setSelectedId(p.assignedTableId!);
+                            setTab("dinner");
+                          }}
+                        >
+                          {tables.find((t) => t.id === p.assignedTableId)?.tableNumber ?? "Table"}
+                        </button>
+                      </div>
+                    )}
                   </div>
-                </div>
-
-                <div className="col-span-12 flex items-center justify-end gap-2 mt-1">
-                  <button
-                    onClick={addReservation}
-                    className="px-3 py-2 rounded-lg text-sm font-semibold border"
-                    style={{
-                      background: BRAND_PRIMARY,
-                      color: "#FDF7EE",
-                      borderColor: BRAND_PRIMARY,
-                    }}
-                  >
-                    Add to tonight
-                  </button>
-                </div>
-              </div>
+                ))}
             </div>
-
-            {/* Reservation list */}
-            <div className="p-3">
-              <div className="space-y-2">
-                {unseatedReservations.length === 0 ? (
-                  <div className="text-sm p-3 rounded-lg border" style={{ borderColor: BRAND_DIVIDER, color: BRAND_MUTED }}>
-                    Everyone is seated (or no guests added yet).
-                  </div>
-                ) : (
-                  unseatedReservations.map((r) => (
-                    <ReservationRow
-                      key={r.id}
-                      r={r}
-                      tables={availableTables}
-                      onSeat={(tableId) => seatReservationToTable(r.id, tableId)}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          </section>
 
           {/* Guest database */}
-          <div className="rounded-2xl bg-white/90 border shadow-sm overflow-hidden" style={{ borderColor: BRAND_BORDER }}>
-            <div className="px-4 py-3 border-b" style={{ borderColor: BRAND_BORDER }}>
-              <h3
-                className="text-sm font-semibold"
-                style={{ color: BRAND_PRIMARY, fontFamily: "Playfair Display, Georgia, serif" }}
-              >
+          <section className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-[#E8D4B8]">
+              <h2 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
                 Guest Database
-              </h3>
-              <p className="text-[11px] mt-0.5" style={{ color: BRAND_MUTED }}>
-                Search and click to prefill “Add to tonight”
-              </p>
-            </div>
-
-            <div className="p-4 border-b" style={{ borderColor: BRAND_DIVIDER }}>
-              <input
-                value={guestSearch}
-                onChange={(e) => setGuestSearch(e.target.value)}
-                className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                placeholder="Search guests…"
-              />
-            </div>
-
-            <div className="max-h-[320px] overflow-auto divide-y" style={{ borderColor: BRAND_DIVIDER }}>
-              {filteredGuests.map((g) => (
-                <button
-                  key={g.id}
-                  onClick={() =>
-                    setResForm((p) => ({
-                      ...p,
-                      guestName: g.name,
-                      allergies: g.defaultAllergies ?? p.allergies,
-                      notes: g.notes ?? p.notes,
-                    }))
-                  }
-                  className="w-full text-left px-4 py-3 hover:bg-[#FDF8F2] transition"
-                >
-                  <div className="text-sm font-semibold" style={{ color: BRAND_TEXT }}>
-                    {g.name}
-                  </div>
-                  <div className="text-[11px]" style={{ color: BRAND_MUTED }}>
-                    {g.defaultAllergies ? `Allergies: ${g.defaultAllergies}` : "No allergies on file"}
-                    {g.notes ? ` • ${g.notes}` : ""}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* MIDDLE: Tables list + Add Table */}
-        <aside className="lg:col-span-4 rounded-2xl bg-white/90 border shadow-sm overflow-hidden" style={{ borderColor: BRAND_BORDER }}>
-          <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: BRAND_BORDER }}>
-            <div>
-              <h2
-                className="text-sm font-semibold"
-                style={{ color: BRAND_PRIMARY, fontFamily: "Playfair Display, Georgia, serif" }}
-              >
-                Tables
               </h2>
-              <p className="text-[11px] mt-0.5" style={{ color: BRAND_MUTED }}>
-                Tap a table to open service panel
+              <p className="text-[11px] text-[#7B5A45] mt-0.5">
+                Search guests + add new guests before service
               </p>
             </div>
-            <span className="text-[11px]" style={{ color: BRAND_MUTED }}>
-              {tables.length} total
-            </span>
-          </div>
 
-          {/* Add table */}
-          <div className="p-4 border-b" style={{ borderColor: BRAND_DIVIDER }}>
-            <div className="grid grid-cols-12 gap-2 items-end">
-              <div className="col-span-5">
-                <label className="block text-[11px] font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                  Table #
-                </label>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Search</label>
                 <input
-                  value={newTableNumber}
-                  onChange={(e) => setNewTableNumber(e.target.value)}
-                  className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                  placeholder="T4 / V3"
+                  value={guestSearch}
+                  onChange={(e) => setGuestSearch(e.target.value)}
+                  placeholder="Search last name, first name, room…"
+                  className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
                 />
               </div>
-              <div className="col-span-5">
-                <label className="block text-[11px] font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                  Area
-                </label>
-                <select
-                  value={newTableArea}
-                  onChange={(e) => setNewTableArea(e.target.value as DiningArea)}
-                  className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                >
-                  <option value="Dining Room">Dining Room</option>
-                  <option value="In-Room">In-Room</option>
-                </select>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Last name *</label>
+                  <input
+                    value={newGuestLast}
+                    onChange={(e) => setNewGuestLast(e.target.value)}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">First name</label>
+                  <input
+                    value={newGuestFirst}
+                    onChange={(e) => setNewGuestFirst(e.target.value)}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Room / Cabin</label>
+                  <input
+                    value={newGuestRoom}
+                    onChange={(e) => setNewGuestRoom(e.target.value)}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Allergies</label>
+                  <input
+                    value={newGuestAllergies}
+                    onChange={(e) => setNewGuestAllergies(e.target.value)}
+                    placeholder="e.g., nuts, gluten…"
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Notes</label>
+                  <input
+                    value={newGuestNotes}
+                    onChange={(e) => setNewGuestNotes(e.target.value)}
+                    placeholder="Anniversary, preferences, pairing notes…"
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                  />
+                </div>
               </div>
-              <div className="col-span-2">
-                <button
-                  onClick={addTable}
-                  className="w-full px-3 py-2 rounded-lg text-sm font-semibold border"
-                  style={{ background: BRAND_PRIMARY, color: "#FDF7EE", borderColor: BRAND_PRIMARY }}
-                >
-                  Add
-                </button>
+
+              <button
+                onClick={addGuest}
+                className="w-full rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm"
+                style={{ backgroundColor: BRAND.maroon }}
+              >
+                Add Guest
+              </button>
+
+              <div className="border-t border-[#F0E0CF] pt-3">
+                <div className="text-xs font-semibold text-[#7B5A45] mb-2">
+                  Results ({filteredGuests.length})
+                </div>
+                <div className="space-y-2 max-h-[320px] overflow-auto pr-1">
+                  {filteredGuests.map((g) => (
+                    <div
+                      key={g.id}
+                      className="rounded-xl border border-[#F0E0CF] bg-white px-3 py-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-semibold text-[#3B2620]">
+                          {g.lastName}
+                          {g.firstName ? `, ${g.firstName}` : ""}
+                        </div>
+                        <div className="text-[11px] text-[#7B5A45]">
+                          {g.roomNumber ?? "—"}
+                        </div>
+                      </div>
+                      {(g.allergies || g.notes) && (
+                        <div className="text-[11px] text-[#7B5A45] mt-1">
+                          {g.allergies ? `Allergy: ${g.allergies}. ` : ""}
+                          {g.notes ?? ""}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {filteredGuests.length === 0 && (
+                    <div className="text-[11px] text-[#7B5A45]">No matches.</div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          </section>
+        </div>
+      ) : (
+        // --- DINNER SERVICE TAB ---
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1.85fr)]">
+          {/* Left: big table cards */}
+          <aside className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-[#E8D4B8] flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                  Live Tables
+                </h2>
+                <p className="text-[11px] text-[#7B5A45] mt-0.5">
+                  Tap a table • Advance / Back controls
+                </p>
+              </div>
+              <span className="text-[11px] text-[#7B5A45]">{tables.length} tables</span>
+            </div>
 
-          {/* Tables list */}
-          <div className="divide-y" style={{ borderColor: BRAND_DIVIDER }}>
-            {tables.map((table) => {
-              const isActive = table.id === selectedId;
-              const hasAllergy = !!table.allergies.trim();
-              const hasAddOn =
-                table.addOns.cheeseCourse ||
-                table.addOns.sparklingWater ||
-                table.addOns.dessertWine ||
-                !!table.addOns.btgNotes.trim() ||
-                !!table.addOns.bottleNotes.trim();
+            <div className="p-4 grid gap-3">
+              {tables.map((t) => {
+                const isActive = t.id === selectedId;
+                const activeIdx = getActiveIndex(t.steps);
+                const activeLabel =
+                  activeIdx !== -1 ? t.steps[activeIdx]?.label : "—";
 
-              const seated = !!table.guestName.trim();
-
-              return (
-                <button
-                  key={table.id}
-                  onClick={() => setSelectedId(table.id)}
-                  className={[
-                    "w-full text-left px-4 py-3 transition flex flex-col gap-1",
-                    isActive ? "bg-[#6B1F2F] text-[#FDF7EE]" : "hover:bg-[#FDF8F2] text-[#3B2620]",
-                  ].join(" ")}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <div className="text-sm font-semibold">{table.tableNumber}</div>
-                      <div className={isActive ? "text-[11px] opacity-90" : "text-[11px] text-[#7B5A45]"}>
-                        {table.diningArea}
-                        {table.time ? ` • ${table.time}` : ""}
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <div className="text-[11px] font-medium truncate max-w-[140px]">
-                        {seated ? table.guestName : "—"}
-                      </div>
-                      <div className="flex flex-wrap gap-1 justify-end mt-1">
-                        {hasAllergy && (
-                          <span
-                            className={[
-                              "text-[10px] px-2 py-0.5 rounded-full",
-                              isActive ? "bg-[#FDE4E2] text-[#8E2525]" : "bg-[#FDEBE8] text-[#8E2525]",
-                            ].join(" ")}
-                          >
-                            Allergy
-                          </span>
-                        )}
-                        {hasAddOn && (
-                          <span
-                            className={[
-                              "text-[10px] px-2 py-0.5 rounded-full",
-                              isActive ? "bg-[#FFF4D6] text-[#8B5A12]" : "bg-[#FFF8E3] text-[#8B5A12]",
-                            ].join(" ")}
-                          >
-                            Add-ons
-                          </span>
-                        )}
-                        {!seated && (
-                          <span
-                            className={[
-                              "text-[10px] px-2 py-0.5 rounded-full",
-                              isActive ? "bg-white/20 text-white" : "bg-[#EEF2FF] text-[#3B4BA3]",
-                            ].join(" ")}
-                          >
-                            Open
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className={isActive ? "text-[11px] opacity-90" : "text-[11px] text-[#7B5A45]"}>
-                    {table.roomNumber ? `${table.roomNumber} • ` : ""}
-                    {table.guestsCount} {table.guestsCount === 1 ? "guest" : "guests"}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
-
-        {/* RIGHT: Selected table detail + add-ons + tracker */}
-        <section className="lg:col-span-4 rounded-2xl bg-white/90 border shadow-sm p-5" style={{ borderColor: BRAND_BORDER }}>
-          {selectedTable ? (
-            <>
-              {/* Header */}
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 mb-4" style={{ borderColor: BRAND_DIVIDER }}>
-                <div>
-                  <h2
-                    className="text-lg font-semibold"
-                    style={{ color: BRAND_PRIMARY, fontFamily: "Playfair Display, Georgia, serif" }}
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setSelectedId(t.id)}
+                    className={[
+                      "rounded-2xl border p-4 text-left transition shadow-sm",
+                      isActive
+                        ? "border-[#6B1F2F] bg-[#6B1F2F] text-[#FDF7EE]"
+                        : "border-[#F0E0CF] bg-white hover:bg-[#FDF8F2] text-[#3B2620]",
+                    ].join(" ")}
                   >
-                    {selectedTable.tableNumber}
-                  </h2>
-                  <p className="text-xs mt-0.5" style={{ color: BRAND_MUTED }}>
-                    {selectedTable.diningArea}
-                    {selectedTable.time ? ` • ${selectedTable.time}` : ""}
-                    {selectedTable.roomNumber ? ` • ${selectedTable.roomNumber}` : ""}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-lg font-bold">{t.tableNumber}</div>
+                        <div className={isActive ? "text-xs opacity-90" : "text-xs text-[#7B5A45]"}>
+                          {t.roomNumber ?? "No room #"} • {t.guestName || "Guest"} • {t.guestsCount}
+                          {"  "}
+                          {t.seatTime ? `• ${t.seatTime}` : ""}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={isActive ? "text-xs opacity-90" : "text-xs text-[#7B5A45]"}>
+                          Now
+                        </div>
+                        <div className="text-sm font-semibold">{activeLabel}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {t.steps.slice(0, 7).map((s) => (
+                        <span key={s.key} className={stepColorClass(s)}>
+                          {s.label}
+                        </span>
+                      ))}
+                      {t.steps.some((s) => s.key === "cheese") && (
+                        <span className={stepColorClass(t.steps.find((s) => s.key === "cheese")!)}>
+                          Cheese
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+
+          {/* Right: detail + controls */}
+          <section className="space-y-6">
+            {/* Mini pre-dinner checklist for expo */}
+            <div className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#E8D4B8] flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                    Seating Checklist
+                  </h3>
+                  <p className="text-[11px] text-[#7B5A45] mt-0.5">
+                    Room • Last name • Seat time (check off as they sit)
                   </p>
                 </div>
-
                 <button
-                  onClick={() => unseatTable(selectedTable.id)}
-                  className="px-3 py-2 rounded-lg text-xs font-semibold border"
-                  style={{
-                    background: "#FFF",
-                    color: BRAND_PRIMARY,
-                    borderColor: BRAND_BORDER,
-                  }}
-                  title="Clear this table (unseat/reset)"
+                  onClick={() => setTab("pre")}
+                  className="text-[11px] font-semibold underline text-[#6B1F2F]"
                 >
-                  Clear table
+                  Edit pre-dinner
                 </button>
               </div>
-
-              {/* Seating basics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                    Guest / party name
-                  </label>
-                  <input
-                    type="text"
-                    value={selectedTable.guestName}
-                    onChange={(e) => updateSelected({ guestName: e.target.value })}
-                    className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                    Party size
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={selectedTable.guestsCount}
-                    onChange={(e) => updateSelected({ guestsCount: Number(e.target.value || 1) })}
-                    className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                    Time
-                  </label>
-                  <input
-                    type="text"
-                    value={selectedTable.time}
-                    onChange={(e) => updateSelected({ time: e.target.value })}
-                    className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                    placeholder="6:30 PM"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                    Room / cabin
-                  </label>
-                  <input
-                    type="text"
-                    value={selectedTable.roomNumber ?? ""}
-                    onChange={(e) => updateSelected({ roomNumber: e.target.value })}
-                    className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                    placeholder="Cabin 3 / Suite 1"
-                  />
-                </div>
-              </div>
-
-              {/* Allergies / occasion / notes */}
-              <div className="grid grid-cols-1 gap-4 mb-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                      Allergies / restrictions
-                    </label>
-                    <textarea
-                      value={selectedTable.allergies}
-                      onChange={(e) => updateSelected({ allergies: e.target.value })}
-                      rows={2}
-                      className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                      placeholder="No nuts, gluten-free, no garlic…"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                      Occasion
-                    </label>
-                    <textarea
-                      value={selectedTable.occasion}
-                      onChange={(e) => updateSelected({ occasion: e.target.value })}
-                      rows={2}
-                      className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                      placeholder="Anniversary / Birthday / VIP…"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                    Notes
-                  </label>
-                  <textarea
-                    value={selectedTable.notes}
-                    onChange={(e) => updateSelected({ notes: e.target.value })}
-                    rows={2}
-                    className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                    style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                    placeholder="Pacing, pairing prefs, guest requests…"
-                  />
-                </div>
-              </div>
-
-              {/* Add-ons / wine */}
-              <div className="rounded-xl border p-4 mb-5" style={{ borderColor: BRAND_DIVIDER, background: "#FFF" }}>
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <h3 className="text-sm font-semibold" style={{ color: BRAND_PRIMARY }}>
-                      Add-ons / Wine
-                    </h3>
-                    <p className="text-[11px]" style={{ color: BRAND_MUTED }}>
-                      Mirrors your “cheat sheet” for water, cheese, wine, etc.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm" style={{ color: BRAND_TEXT }}>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedTable.addOns.sparklingWater}
-                      onChange={() => toggleAddOn("sparklingWater")}
-                    />
-                    Sparkling water
-                  </label>
-
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedTable.addOns.cheeseCourse}
-                      onChange={() => toggleAddOn("cheeseCourse")}
-                    />
-                    Cheese course
-                  </label>
-
-                  <label className="flex items-center gap-2 md:col-span-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedTable.addOns.dessertWine}
-                      onChange={() => toggleAddOn("dessertWine")}
-                    />
-                    Dessert wine
-                  </label>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                      Wine by the glass (notes)
-                    </label>
-                    <input
-                      value={selectedTable.addOns.btgNotes}
-                      onChange={(e) => setAddOnText("btgNotes", e.target.value)}
-                      className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                      placeholder="2x Pinot Noir BTG, 1x Champagne…"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                      Bottles (notes)
-                    </label>
-                    <input
-                      value={selectedTable.addOns.bottleNotes}
-                      onChange={(e) => setAddOnText("bottleNotes", e.target.value)}
-                      className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                      placeholder="Substance 111, Sonoma-Cutrer…"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                      General drinks notes
-                    </label>
-                    <textarea
-                      value={selectedTable.drinks}
-                      onChange={(e) => updateSelected({ drinks: e.target.value })}
-                      rows={2}
-                      className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                      placeholder="Cocktails, aperitif, amaro, etc."
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Service tracker */}
-              <div className="rounded-xl border p-4" style={{ borderColor: BRAND_DIVIDER, background: "#FFF" }}>
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div>
-                    <h3 className="text-sm font-semibold" style={{ color: BRAND_PRIMARY }}>
-                      Service Tracker
-                    </h3>
-                    <p className="text-[11px]" style={{ color: BRAND_MUTED }}>
-                      Tap a course: blank → Served → Cleared (mirrors your “X then cross out”)
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={resetAllCourses}
-                    className="px-3 py-2 rounded-lg text-xs font-semibold border"
-                    style={{ background: "#FFF", color: BRAND_PRIMARY, borderColor: BRAND_BORDER }}
-                  >
-                    Reset
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {COURSE_LABELS.map(({ key, label }) => {
-                    const chip = courseChip(key)!;
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => cycleCourse(key)}
-                        className="rounded-xl p-3 text-left transition hover:shadow-sm"
-                        style={{ background: "#fff" }}
-                      >
-                        <div className="text-xs font-semibold" style={{ color: BRAND_TEXT }}>
-                          {label}
-                        </div>
-                        <div className={`mt-2 inline-flex items-center px-2 py-1 rounded-full text-[11px] ${chip.cls}`}>
-                          {chip.label}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Optional: kitchen notes */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                  <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                      Protein doneness
-                    </label>
-                    <select
-                      value={selectedTable.protein}
-                      onChange={(e) => updateSelected({ protein: e.target.value as ProteinDoneness })}
-                      className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
+              <div className="p-4">
+                <div className="grid gap-2">
+                  {dinnerChecklist.map((p) => (
+                    <label
+                      key={p.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-[#F0E0CF] bg-white px-3 py-2"
                     >
-                      <option value="n/a">N/A</option>
-                      <option value="rare">Rare</option>
-                      <option value="medium-rare">Medium-rare</option>
-                      <option value="medium">Medium</option>
-                      <option value="medium-well">Medium-well</option>
-                      <option value="well">Well</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: BRAND_MUTED }}>
-                      Substitutions
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={p.seated}
+                          onChange={() =>
+                            setPreDinner((prev) =>
+                              prev.map((x) =>
+                                x.id === p.id ? { ...x, seated: !x.seated } : x
+                              )
+                            )
+                          }
+                        />
+                        <div>
+                          <div className="text-sm font-semibold text-[#3B2620]">
+                            {p.roomNumber ?? "—"} • {p.lastName}
+                          </div>
+                          <div className="text-[11px] text-[#7B5A45]">
+                            Seat {p.seatTime} • {p.partySize} guests
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-[11px] text-[#7B5A45]">
+                        {p.assignedTableId
+                          ? `→ ${tables.find((t) => t.id === p.assignedTableId)?.tableNumber ?? "Table"}`
+                          : ""}
+                      </div>
                     </label>
-                    <textarea
-                      value={selectedTable.substitutions}
-                      onChange={(e) => updateSelected({ substitutions: e.target.value })}
-                      rows={2}
-                      className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: "#E0C6AF", background: BRAND_SOFT, color: BRAND_TEXT }}
-                      placeholder="No onion, swap sauce, etc."
-                    />
-                  </div>
+                  ))}
                 </div>
               </div>
-            </>
-          ) : (
-            <p className="text-sm" style={{ color: BRAND_MUTED }}>
-              Select a table to view/edit details.
-            </p>
-          )}
-        </section>
-      </div>
-    </MainLayout>
-  );
-}
-
-function ReservationRow({
-  r,
-  tables,
-  onSeat,
-}: {
-  r: Reservation;
-  tables: ServiceTable[];
-  onSeat: (tableId: number) => void;
-}) {
-  const [selectedTableId, setSelectedTableId] = useState<number>(
-    tables[0]?.id ?? 0
-  );
-
-  const allergyTag = r.allergies?.trim();
-  const occasionTag = r.occasion?.trim();
-
-  return (
-    <div className="rounded-xl border p-3" style={{ borderColor: "#F0E0CF", background: "#fff" }}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-[#3B2620]">{r.time}</span>
-            <span className="text-xs text-[#7B5A45]">•</span>
-            <span className="text-xs font-semibold text-[#3B2620]">{r.guestName}</span>
-            <span className="text-xs text-[#7B5A45]">
-              • {r.guestsCount} {r.guestsCount === 1 ? "guest" : "guests"}
-            </span>
-          </div>
-
-          <div className="text-[11px] text-[#7B5A45] mt-0.5">
-            {r.diningArea}
-            {r.roomNumber ? ` • ${r.roomNumber}` : ""}
-          </div>
-
-          <div className="flex flex-wrap gap-1 mt-2">
-            {allergyTag ? (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FDEBE8] text-[#8E2525]">
-                Allergy
-              </span>
-            ) : null}
-            {occasionTag ? (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#EEF2FF] text-[#3B4BA3]">
-                {r.occasion}
-              </span>
-            ) : null}
-            {r.notes?.trim() ? (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FFF8E3] text-[#8B5A12]">
-                Notes
-              </span>
-            ) : null}
-          </div>
-
-          {(r.allergies?.trim() || r.notes?.trim()) && (
-            <div className="text-[11px] text-[#3B2620] mt-2">
-              {r.allergies?.trim() ? `Allergies: ${r.allergies.trim()}` : ""}
-              {r.allergies?.trim() && r.notes?.trim() ? " • " : ""}
-              {r.notes?.trim() ? r.notes.trim() : ""}
             </div>
-          )}
-        </div>
 
-        <div className="flex flex-col gap-2 w-[140px] shrink-0">
-          <select
-            value={selectedTableId}
-            onChange={(e) => setSelectedTableId(Number(e.target.value))}
-            className="w-full rounded-lg border px-2 py-2 text-xs focus:outline-none focus:ring-2"
-            style={{ borderColor: "#E0C6AF", background: "#FDF8F2", color: "#3B2620" }}
-          >
-            {tables.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.tableNumber}
-              </option>
-            ))}
-          </select>
+            {/* Selected table control panel */}
+            <div className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm p-5">
+              {selectedTable ? (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#F0E0CF] pb-3 mb-4">
+                    <div>
+                      <h2 className="text-lg font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                        {selectedTable.tableNumber}{" "}
+                        <span className="text-sm font-medium text-[#7B5A45]">
+                          • {selectedTable.roomNumber ?? "No room #"}
+                        </span>
+                      </h2>
+                      <p className="text-xs text-[#7B5A45] mt-0.5">
+                        {selectedTable.guestName || "Guest"} • {selectedTable.guestsCount} guests
+                        {selectedTable.seatTime ? ` • Seat ${selectedTable.seatTime}` : ""}
+                      </p>
+                    </div>
 
-          <button
-            onClick={() => onSeat(selectedTableId)}
-            className="w-full px-3 py-2 rounded-lg text-xs font-semibold border"
-            style={{ background: "#6B1F2F", color: "#FDF7EE", borderColor: "#6B1F2F" }}
-          >
-            Seat
-          </button>
+                    {/* Advance / Back */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => backStep(selectedTable.id)}
+                        className="rounded-xl border px-4 py-2 text-sm font-semibold"
+                        style={{ borderColor: BRAND.tanLight, color: BRAND.maroonDark, backgroundColor: "white" }}
+                        title="Undo (back one step)"
+                      >
+                        Back
+                      </button>
+                      <button
+                        onClick={() => advanceStep(selectedTable.id)}
+                        className="rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm"
+                        style={{ backgroundColor: BRAND.maroon }}
+                        title="Advance to next step"
+                      >
+                        Advance
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Step row */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {selectedTable.steps.map((s) => (
+                      <span key={s.key} className={stepColorClass(s)}>
+                        {s.label}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Cheese insert controls */}
+                  <div className="rounded-xl border border-[#F0E0CF] bg-white p-4 mb-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-[#3B2620]">Add-ons</div>
+                        <div className="text-[11px] text-[#7B5A45] mt-0.5">
+                          Cheese course can be inserted anywhere guests want it.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                      <label className="flex items-center gap-2 text-sm text-[#3B2620]">
+                        <input
+                          type="checkbox"
+                          checked={selectedTable.addOns.cheeseBoard}
+                          onChange={() => toggleAddOn("cheeseBoard")}
+                        />
+                        Cheese course
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-[#3B2620]">
+                        <input
+                          type="checkbox"
+                          checked={selectedTable.addOns.sparklingWater}
+                          onChange={() => toggleAddOn("sparklingWater")}
+                        />
+                        Sparkling water
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-[#3B2620]">
+                        <input
+                          type="checkbox"
+                          checked={selectedTable.addOns.dessertWine}
+                          onChange={() => toggleAddOn("dessertWine")}
+                        />
+                        Dessert wine
+                      </label>
+                    </div>
+
+                    {selectedTable.addOns.cheeseBoard && (
+                      <div className="mt-4">
+                        <div className="text-xs font-semibold text-[#7B5A45] mb-2">
+                          Insert Cheese after:
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {(["wine", "starter", "entree", "dessert"] as StepKey[]).map((k) => (
+                            <button
+                              key={k}
+                              onClick={() => insertCheeseAfter(selectedTable.id, k)}
+                              className="rounded-xl border px-3 py-2 text-xs font-semibold bg-white hover:bg-[#FDF8F2]"
+                              style={{ borderColor: BRAND.tanLight, color: BRAND.maroonDark }}
+                            >
+                              {k === "wine" ? "Wine" : k === "starter" ? "Starter" : k === "entree" ? "Entrée" : "Dessert"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Notes / allergies quick fields */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                    <div>
+                      <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Allergies / restrictions</label>
+                      <textarea
+                        value={selectedTable.allergies}
+                        onChange={(e) => updateSelected({ allergies: e.target.value })}
+                        rows={2}
+                        className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Service notes</label>
+                      <textarea
+                        value={selectedTable.notes}
+                        onChange={(e) => updateSelected({ notes: e.target.value })}
+                        rows={2}
+                        className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                        placeholder="Anniversary, pacing, pairing notes…"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Expo timing */}
+                  <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                          Expo Timing
+                        </h3>
+                        <p className="text-[11px] text-[#7B5A45] mt-0.5">
+                          Tap Called → Ready → Out to measure time per course.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 mt-3">
+                      {(["starter", "entree", "dessert"] as CourseKey[]).map((course) => {
+                        const ex = selectedTable.expo[course];
+                        return (
+                          <div key={course} className="rounded-xl border border-[#F0E0CF] p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-sm font-semibold text-[#3B2620]">
+                                {course === "starter" ? "Starter" : course === "entree" ? "Entrée" : "Dessert"}
+                              </div>
+                              <div className="text-[11px] text-[#7B5A45]">
+                                Total: {dur(ex.calledAt, ex.outAt)}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+                              <button
+                                onClick={() => setExpoTime(selectedTable.id, course, "calledAt")}
+                                className="rounded-xl border px-3 py-2 text-xs font-semibold bg-white hover:bg-[#FDF8F2]"
+                                style={{ borderColor: BRAND.tanLight, color: BRAND.maroonDark }}
+                              >
+                                Called: {fmtTime(ex.calledAt)}
+                              </button>
+                              <button
+                                onClick={() => setExpoTime(selectedTable.id, course, "readyAt")}
+                                className="rounded-xl border px-3 py-2 text-xs font-semibold bg-white hover:bg-[#FDF8F2]"
+                                style={{ borderColor: BRAND.tanLight, color: BRAND.maroonDark }}
+                              >
+                                Ready: {fmtTime(ex.readyAt)}{" "}
+                                <span className="font-normal text-[#7B5A45]">
+                                  ({dur(ex.calledAt, ex.readyAt)})
+                                </span>
+                              </button>
+                              <button
+                                onClick={() => setExpoTime(selectedTable.id, course, "outAt")}
+                                className="rounded-xl border px-3 py-2 text-xs font-semibold bg-white hover:bg-[#FDF8F2]"
+                                style={{ borderColor: BRAND.tanLight, color: BRAND.maroonDark }}
+                              >
+                                Out: {fmtTime(ex.outAt)}{" "}
+                                <span className="font-normal text-[#7B5A45]">
+                                  ({dur(ex.readyAt, ex.outAt)})
+                                </span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-[#7B5A45] mt-4">
+                    Next step: we’ll persist tables, guests, and timing to your backend so it survives refresh and can generate reports.
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-[#7B5A45]">
+                  Select a table on the left to view controls.
+                </p>
+              )}
+            </div>
+          </section>
         </div>
-      </div>
-    </div>
+      )}
+    </MainLayout>
   );
 }
