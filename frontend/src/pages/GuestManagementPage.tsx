@@ -1,6 +1,7 @@
 // src/pages/GuestManagementPage.tsx
 import { useEffect, useMemo, useState } from "react";
-import Layout from "@/components/Layout"; // if you use MainLayout, switch this import
+import MainLayout from '@/layouts/MainLayout';
+
 
 type Guest = {
   id: number;
@@ -219,7 +220,11 @@ export default function GuestManagementPage() {
   }, [guests]);
 
   return (
-    <Layout>
+  <MainLayout
+    title="Guest Management"
+    subtitle="Full guest database — preferences, allergies, and notes"
+  >
+
       <div className="space-y-5">
         {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -617,7 +622,7 @@ export default function GuestManagementPage() {
           </Drawer>
         ) : null}
       </div>
-    </Layout>
+        </MainLayout>
   );
 }
 

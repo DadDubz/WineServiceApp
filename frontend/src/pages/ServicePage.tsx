@@ -1,1560 +1,1086 @@
 // src/pages/ServicePage.tsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import MainLayout from "@/layouts/MainLayout";
 
-type ProteinDoneness =
-  | "rare"
-  | "medium-rare"
-  | "medium"
-  | "medium-well"
-  | "well"
-  | "n/a";
-
-type ServiceTab = "pre" | "dinner";
+type ProteinDoneness = "rare" | "medium-rare" | "medium" | "medium-well" | "well" | "n/a";
+type ProteinSub = "" | "chicken" | "fish";
+type CoffeeTeaChoice = "" | "coffee" | "decaf" | "nespresso" | "tea" | "port";
 
 type StepKey =
-  | "seating"
+  | "seated"
   | "bread_water"
   | "wine_service"
   | "starter"
-  | "cheese"
   | "entree"
+  | "coffee_tea"
   | "dessert"
-  | "goodbye";
+  | "goodbye"
+  | "cheese_board";
 
-type StepStatus = "todo" | "done";
-type CheesePosition = "after_wine" | "after_starter" | "after_entree";
-type CourseKey = "starter" | "entree" | "dessert";
+type StepStatus = "called" | "ready" | "served" | "cleared";
 
-interface ServiceStep {
-  key: StepKey;
-  label: string;
-  status: StepStatus;
-  color: string;
-}
+type GuestEntry = {
+  id: string;
+  name: string;
+  allergy: string;
+  proteinSub: ProteinSub;
+};
 
-interface ExpoTimes {
-  calledAt?: string;
-  readyAt?: string;
-  servedAt?: string;
-  clearedAt?: string;
-}
+type StepTiming = {
+  calledAt?: number;
+  readyAt?: number;
+  servedAt?: number;
+  clearedAt?: number;
+};
 
-interface ExpoByCourse {
-  starter: ExpoTimes;
-  entree: ExpoTimes;
-  dessert: ExpoTimes;
-}
+type ServiceFlow = {
+  stepIndex: number;
+  status: StepStatus; // status of CURRENT step
+  // log of actions for undo + review
+  history: { stepIndex: number; status: StepStatus; timingsSnapshot: Record<string, StepTiming> }[];
+  // timings by stepKey
+  timings: Record<string, StepTiming>;
+};
 
 interface ServiceTable {
-  id: number; // 1..20
-  tableNumber: string; // "T1"
-  roomNumber: string;
-  guestLastName: string;
+  id: number;
+  tableNumber: string; // e.g. T1
+  roomNumber?: string;
+  reservationTime?: string;
+
   guestsCount: number;
-  seatTime: string;
+  guests: GuestEntry[];
 
-  allergies: string;
-  occasion: string;
+  partyLabel: string;
+
   notes: string;
-  drinks: string;
 
+  // Wine ordering
+  bottles: string[];
+  btg: string[];
+
+  // Add-ons
   addOns: {
+    cheeseBoard: boolean;
     sparklingWater: boolean;
-    wineBTG: boolean;
-    wineBottle: boolean;
-    cheeseCourse: boolean;
+    dessertWine: boolean;
   };
 
-  cheesePosition: CheesePosition;
+  // Cheese placement (only used when cheeseBoard = true)
+  cheesePlacement:
+    | "after_seated"
+    | "after_bread_water"
+    | "after_wine_service"
+    | "after_starter"
+    | "after_entree"
+    | "after_coffee_tea"
+    | "after_dessert";
+
+  // Coffee/Tea service
+  coffeeTea: {
+    enabled: boolean;
+    choice: CoffeeTeaChoice;
+  };
 
   substitutions: string;
   protein: ProteinDoneness;
 
-  steps: ServiceStep[];
-  history: { steps: ServiceStep[]; at: string; note: string }[];
+  // New: service flow
+  service: ServiceFlow;
 
-  expo: ExpoByCourse;
+  // New: seated order (for list ordering)
+  seatedAt?: number;
 
-  occupiedByReservationId?: string;
-
-  satAtIso?: string;
-  closedOut: boolean;
-  closedAtIso?: string;
+  // New: table complete
+  completedAt?: number;
 }
 
-interface GuestProfile {
-  id: string;
-  lastName: string;
-  firstName?: string;
-  phone?: string;
-  email?: string;
-  defaultAllergies?: string;
-  notes?: string;
+type InventoryItemAny = Record<string, any>;
+
+const API_BASE = "http://localhost:8000/api";
+const COMPANY_ID = 1; // TEMP: for preview. Later: derive from auth user/company.
+
+const BTG_OPTIONS = [
+  "NV Grower Champagne",
+  "2020 Chablis",
+  "2021 Sauvignon Blanc",
+  "2018 Pinot Noir",
+  "2019 Cabernet Sauvignon",
+];
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
 }
 
-interface Reservation {
-  id: string;
-  lastName: string;
-  roomNumber: string;
-  partySize: number;
-  seatTime: string;
-  allergies: string;
-  occasion: string;
-  notes: string;
-
-  arrived: boolean;
-  assignedTableNum?: number; // 1..20
-}
-
-// ---------- helpers ----------
-const pad2 = (n: number) => String(n).padStart(2, "0");
-
-function nowLocalHM(): string {
-  const d = new Date();
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
-
-function cloneSteps(steps: ServiceStep[]) {
-  return steps.map((s) => ({ ...s }));
-}
-
-function baseStepPalette(key: StepKey): { label: string; color: string } {
-  switch (key) {
-    case "seating":
-      return {
-        label: "Seating guest",
-        color: "bg-sky-50 text-sky-900 border-sky-200",
-      };
-    case "bread_water":
-      return {
-        label: "Bread & water",
-        color: "bg-blue-50 text-blue-900 border-blue-200",
-      };
-    case "wine_service":
-      return {
-        label: "Wine service",
-        color: "bg-violet-50 text-violet-900 border-violet-200",
-      };
-    case "starter":
-      return {
-        label: "Starter course",
-        color: "bg-amber-50 text-amber-900 border-amber-200",
-      };
-    case "cheese":
-      return {
-        label: "Cheese course",
-        color: "bg-yellow-50 text-yellow-900 border-yellow-200",
-      };
-    case "entree":
-      return {
-        label: "Entrée",
-        color: "bg-rose-50 text-rose-900 border-rose-200",
-      };
-    case "dessert":
-      return {
-        label: "Dessert",
-        color: "bg-emerald-50 text-emerald-900 border-emerald-200",
-      };
-    case "goodbye":
-      return {
-        label: "Goodbye treat (canoe)",
-        color: "bg-stone-50 text-stone-900 border-stone-200",
-      };
-    default:
-      return { label: "Step", color: "bg-slate-50 text-slate-900 border-slate-200" };
-  }
-}
-
-function buildSteps(hasCheese: boolean, cheesePosition: CheesePosition): ServiceStep[] {
-  const make = (key: StepKey): ServiceStep => {
-    const meta = baseStepPalette(key);
-    return { key, label: meta.label, status: "todo", color: meta.color };
-  };
-
-  const order: StepKey[] = [
-    "seating",
-    "bread_water",
-    "wine_service",
-    "starter",
-    "entree",
-    "dessert",
-    "goodbye",
-  ];
-
-  if (hasCheese) {
-    if (cheesePosition === "after_wine") {
-      const idx = order.indexOf("wine_service");
-      order.splice(idx + 1, 0, "cheese");
-    } else if (cheesePosition === "after_starter") {
-      const idx = order.indexOf("starter");
-      order.splice(idx + 1, 0, "cheese");
-    } else {
-      const idx = order.indexOf("entree");
-      order.splice(idx + 1, 0, "cheese");
-    }
-  }
-
-  return order.map(make);
-}
-
-function rebuildStepsPreserveStatus(
-  prevSteps: ServiceStep[],
-  nextHasCheese: boolean,
-  nextPos: CheesePosition
-): ServiceStep[] {
-  const next = buildSteps(nextHasCheese, nextPos);
-
-  const statusByKey = new Map<StepKey, StepStatus>();
-  for (const s of prevSteps) statusByKey.set(s.key, s.status);
-
-  return next.map((s) => ({
-    ...s,
-    status: statusByKey.get(s.key) ?? "todo",
+function buildGuests(count: number): GuestEntry[] {
+  return Array.from({ length: count }).map((_, idx) => ({
+    id: `${Date.now()}-${idx}-${uid()}`,
+    name: "",
+    allergy: "",
+    proteinSub: "",
   }));
 }
 
-function makeEmptyTable(n: number): ServiceTable {
+// Best-effort mapping from your InventoryOut -> name field
+function getWineName(item: InventoryItemAny) {
+  return (
+    item.wine_name ||
+    item.wineName ||
+    item.name ||
+    item.label ||
+    item.title ||
+    item.sku ||
+    `Wine #${item.id ?? "—"}`
+  );
+}
+
+function cloneTimings(t: Record<string, StepTiming>) {
+  // deep-ish clone so undo snapshots don’t mutate
+  const out: Record<string, StepTiming> = {};
+  Object.entries(t).forEach(([k, v]) => {
+    out[k] = { ...v };
+  });
+  return out;
+}
+
+function baseSteps(table: ServiceTable): { key: StepKey; label: string }[] {
+  const steps: { key: StepKey; label: string }[] = [
+    { key: "seated", label: "Seated" },
+    { key: "bread_water", label: "Bread & Water" },
+    { key: "wine_service", label: "Wine Service" },
+    { key: "starter", label: "Starter" },
+    { key: "entree", label: "Entree" },
+  ];
+
+  // Coffee/Tea step is optional but sits between entree and dessert when enabled
+  if (table.coffeeTea.enabled) {
+    steps.push({ key: "coffee_tea", label: "Coffee/Tea" });
+  }
+
+  steps.push({ key: "dessert", label: "Dessert" });
+  steps.push({ key: "goodbye", label: "Goodbye Treat" });
+
+  // Insert cheese board if enabled
+  if (table.addOns.cheeseBoard) {
+    const cheeseStep = { key: "cheese_board" as StepKey, label: "Cheese Board" };
+
+    const insertAfterKeyMap: Record<ServiceTable["cheesePlacement"], StepKey> = {
+      after_seated: "seated",
+      after_bread_water: "bread_water",
+      after_wine_service: "wine_service",
+      after_starter: "starter",
+      after_entree: "entree",
+      after_coffee_tea: "coffee_tea",
+      after_dessert: "dessert",
+    };
+
+    const afterKey = insertAfterKeyMap[table.cheesePlacement];
+
+    const idx = steps.findIndex((s) => s.key === afterKey);
+    // if not found (coffee_tea disabled but placement is after_coffee_tea), fallback to after_entree
+    const safeIdx = idx >= 0 ? idx : steps.findIndex((s) => s.key === "entree");
+    steps.splice(safeIdx + 1, 0, cheeseStep);
+  }
+
+  return steps;
+}
+
+function statusLabel(s: StepStatus) {
+  if (s === "called") return "Called";
+  if (s === "ready") return "Ready";
+  if (s === "served") return "Served";
+  return "Cleared";
+}
+
+function statusColor(s: StepStatus) {
+  // classes chosen to pop but stay brand-friendly
+  if (s === "called") return "bg-[#FFF8E3] text-[#8B5A12] border-[#F0E0CF]";
+  if (s === "ready") return "bg-[#EEF2FF] text-[#1E3A8A] border-[#E8D4B8]";
+  if (s === "served") return "bg-[#ECFDF5] text-[#166534] border-[#D4AF88]";
+  return "bg-slate-100 text-slate-600 border-slate-200";
+}
+
+function now() {
+  return Date.now();
+}
+
+function fmtTime(ts?: number) {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function minsBetween(a?: number, b?: number) {
+  if (!a || !b) return null;
+  const ms = Math.max(0, b - a);
+  return Math.round((ms / 60000) * 10) / 10;
+}
+
+function makeServiceFlow(): ServiceFlow {
   return {
-    id: n,
-    tableNumber: `T${n}`,
-    roomNumber: "",
-    guestLastName: "",
-    guestsCount: 0,
-    seatTime: "",
-
-    allergies: "",
-    occasion: "",
-    notes: "",
-    drinks: "",
-
-    addOns: {
-      sparklingWater: false,
-      wineBTG: false,
-      wineBottle: false,
-      cheeseCourse: false,
-    },
-
-    cheesePosition: "after_wine",
-
-    substitutions: "",
-    protein: "n/a",
-
-    steps: buildSteps(false, "after_wine"),
+    stepIndex: 0,
+    status: "called",
     history: [],
-
-    expo: { starter: {}, entree: {}, dessert: {} },
-
-    occupiedByReservationId: undefined,
-
-    satAtIso: undefined,
-    closedOut: false,
-    closedAtIso: undefined,
+    timings: {},
   };
 }
 
-const initialTables: ServiceTable[] = Array.from({ length: 20 }, (_, i) =>
-  makeEmptyTable(i + 1)
-);
-
-// demo seed
-const seedGuests: GuestProfile[] = [
-  { id: "g1", lastName: "Smith", firstName: "A.", defaultAllergies: "", notes: "" },
-  { id: "g2", lastName: "Johnson", firstName: "K.", defaultAllergies: "No nuts", notes: "" },
-  { id: "g3", lastName: "Taylor", firstName: "M.", defaultAllergies: "", notes: "Prefers Burgundy" },
-];
-
-const seedReservations: Reservation[] = [
+const initialTables: ServiceTable[] = [
   {
-    id: "r1",
-    lastName: "Smith",
+    id: 1,
+    tableNumber: "T1",
     roomNumber: "Cabin 3",
-    partySize: 2,
-    seatTime: "17:30",
-    allergies: "",
-    occasion: "",
+    reservationTime: "6:00 pm",
+    guestsCount: 2,
+    guests: buildGuests(2),
+    partyLabel: "Smith",
     notes: "",
-    arrived: false,
-    assignedTableNum: undefined,
+    bottles: [],
+    btg: [],
+    addOns: { cheeseBoard: false, sparklingWater: false, dessertWine: false },
+    cheesePlacement: "after_wine_service",
+    coffeeTea: { enabled: false, choice: "" },
+    substitutions: "",
+    protein: "medium-rare",
+    service: makeServiceFlow(),
+    seatedAt: now(),
   },
   {
-    id: "r2",
-    lastName: "Johnson",
+    id: 2,
+    tableNumber: "T2",
     roomNumber: "Cabin 7",
-    partySize: 4,
-    seatTime: "18:00",
-    allergies: "No nuts",
-    occasion: "Anniversary",
-    notes: "Cheese course requested",
-    arrived: false,
-    assignedTableNum: undefined,
-  },
-  {
-    id: "r3",
-    lastName: "Taylor",
-    roomNumber: "Suite 1",
-    partySize: 2,
-    seatTime: "18:15",
-    allergies: "",
-    occasion: "Birthday",
+    reservationTime: "6:30 pm",
+    guestsCount: 4,
+    guests: buildGuests(4),
+    partyLabel: "Johnson",
     notes: "",
-    arrived: false,
-    assignedTableNum: undefined,
+    bottles: [],
+    btg: [],
+    addOns: { cheeseBoard: true, sparklingWater: false, dessertWine: false },
+    cheesePlacement: "after_starter",
+    coffeeTea: { enabled: false, choice: "" },
+    substitutions: "",
+    protein: "medium",
+    service: makeServiceFlow(),
+    seatedAt: now() + 1000,
   },
 ];
-
-// ----------------- Left list “status” helpers -----------------
-function getFirstTodoStep(table: ServiceTable): ServiceStep | null {
-  return table.steps.find((s) => s.status === "todo") ?? null;
-}
-
-function isCourseKey(k: StepKey): k is CourseKey {
-  return k === "starter" || k === "entree" || k === "dessert";
-}
-
-function expoStage(times: ExpoTimes): {
-  label: string;
-  key: "called" | "ready" | "served" | "cleared" | "not";
-} {
-  if (!times.calledAt) return { label: "Not called", key: "not" };
-  if (!times.readyAt) return { label: "Called → kitchen", key: "called" };
-  if (!times.servedAt) return { label: "Ready", key: "ready" };
-  if (!times.clearedAt) return { label: "Served", key: "served" };
-  return { label: "Cleared", key: "cleared" };
-}
-
-function stagePillClass(stageKey: ReturnType<typeof expoStage>["key"]) {
-  switch (stageKey) {
-    case "called":
-      return "bg-indigo-50 text-indigo-900 border-indigo-200";
-    case "ready":
-      return "bg-amber-50 text-amber-900 border-amber-200";
-    case "served":
-      return "bg-emerald-50 text-emerald-900 border-emerald-200";
-    case "cleared":
-      return "bg-slate-100 text-slate-700 border-slate-200";
-    default:
-      return "bg-stone-50 text-stone-900 border-stone-200";
-  }
-}
 
 export default function ServicePage() {
-  const [tab, setTab] = useState<ServiceTab>("pre");
+  const [tables, setTables] = useState<ServiceTable[]>(initialTables);
+  const [selectedId, setSelectedId] = useState<number | null>(initialTables[0]?.id ?? null);
 
-  const [tables, setTables] = useState<ServiceTable[]>(() =>
-    initialTables.map((t) => ({ ...t }))
-  );
+  const [inventoryWines, setInventoryWines] = useState<string[]>([]);
+  const [invLoading, setInvLoading] = useState(false);
+  const [invError, setInvError] = useState<string | null>(null);
 
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedBottleToAdd, setSelectedBottleToAdd] = useState("");
+  const [selectedBtgToAdd, setSelectedBtgToAdd] = useState("");
+
   const selectedTable = tables.find((t) => t.id === selectedId) ?? null;
 
-  const [guestDb, setGuestDb] = useState<GuestProfile[]>(seedGuests);
-  const [preDinner, setPreDinner] = useState<Reservation[]>(seedReservations);
+  useEffect(() => {
+    const fetchInventory = async () => {
+      setInvLoading(true);
+      setInvError(null);
+      try {
+        const res = await fetch(`${API_BASE}/inventory/?company_id=${COMPANY_ID}`);
+        if (!res.ok) throw new Error(`Inventory failed (${res.status})`);
+        const data = (await res.json()) as InventoryItemAny[];
 
-  const [confirmClear, setConfirmClear] = useState<{
-    open: boolean;
-    reservationId?: string;
-    tableNum?: number;
-  }>({ open: false });
+        const names = data
+          .map((x) => String(getWineName(x)).trim())
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b));
 
-  const [confirmCloseOut, setConfirmCloseOut] = useState<{
-    open: boolean;
-    tableNum?: number;
-  }>({ open: false });
+        setInventoryWines(names);
+      } catch (e: any) {
+        setInvError(e?.message || "Failed to load inventory wines");
+        setInventoryWines([]);
+      } finally {
+        setInvLoading(false);
+      }
+    };
 
-  // NEW: Dinner-tab "Seat guests" bar state
-  const [seatBar, setSeatBar] = useState<{ reservationId: string; tableNum: string }>({
-    reservationId: "",
-    tableNum: "",
-  });
+    fetchInventory();
+  }, []);
 
-  // ---------- core updaters ----------
-  const updateTable = (tableId: number, patch: Partial<ServiceTable>) => {
-    setTables((prev) =>
-      prev.map((t) => (t.id === tableId ? { ...t, ...patch } : t))
-    );
+  const updateTable = (tableId: number, updater: (t: ServiceTable) => ServiceTable) => {
+    setTables((prev) => prev.map((t) => (t.id === tableId ? updater(t) : t)));
   };
 
-  const undoLast = (tableId: number) => {
-    setTables((prev) =>
-      prev.map((t) => {
-        if (t.id !== tableId) return t;
-        const [head, ...rest] = t.history;
-        if (!head) return t;
-        return { ...t, steps: cloneSteps(head.steps), history: rest };
-      })
-    );
+  const updateSelected = (patch: Partial<ServiceTable>) => {
+    if (!selectedTable) return;
+    updateTable(selectedTable.id, (t) => ({
+      ...t,
+      ...patch,
+      addOns: patch.addOns ?? t.addOns,
+      coffeeTea: patch.coffeeTea ?? t.coffeeTea,
+      guests: patch.guests ?? t.guests,
+      service: patch.service ?? t.service,
+    }));
   };
 
-  const maybeAutoCloseOut = (t: ServiceTable): ServiceTable => {
-    const goodbye = t.steps.find((s) => s.key === "goodbye");
-    if (goodbye?.status === "done" && !t.closedOut) {
-      return { ...t, closedOut: true, closedAtIso: new Date().toISOString() };
-    }
-    return t;
+  const handleAddOnToggle = (field: keyof ServiceTable["addOns"]) => {
+    if (!selectedTable) return;
+    updateTable(selectedTable.id, (t) => ({
+      ...t,
+      addOns: { ...t.addOns, [field]: !t.addOns[field] },
+    }));
   };
 
-  const toggleStepDone = (tableId: number, stepKey: StepKey) => {
-    setTables((prev) =>
-      prev.map((t) => {
-        if (t.id !== tableId) return t;
+  const stepsForSelected = useMemo(() => {
+    if (!selectedTable) return [];
+    return baseSteps(selectedTable);
+  }, [selectedTable?.addOns.cheeseBoard, selectedTable?.cheesePlacement, selectedTable?.coffeeTea.enabled]);
 
-        const snapshot = cloneSteps(t.steps);
+  // SERVICE: one click advance (called -> ready -> served -> cleared -> next step)
+  const advanceService = () => {
+    if (!selectedTable) return;
 
-        const nextSteps = t.steps.map((s) =>
-          s.key === stepKey
-            ? { ...s, status: s.status === "done" ? "todo" : "done" }
-            : s
-        );
+    updateTable(selectedTable.id, (t) => {
+      const steps = baseSteps(t);
+      const maxIndex = steps.length - 1;
 
-        const next: ServiceTable = {
-          ...t,
-          steps: nextSteps,
-          history: [
-            { steps: snapshot, at: new Date().toISOString(), note: `Toggle ${stepKey}` },
-            ...t.history,
-          ].slice(0, 25),
-        };
+      const currentStep = steps[t.service.stepIndex];
+      if (!currentStep) return t;
 
-        return maybeAutoCloseOut(next);
-      })
-    );
-  };
+      // snapshot for undo
+      const snapshot = {
+        stepIndex: t.service.stepIndex,
+        status: t.service.status,
+        timingsSnapshot: cloneTimings(t.service.timings),
+      };
 
-  const setCheeseCourse = (tableId: number, enabled: boolean) => {
-    setTables((prev) =>
-      prev.map((t) => {
-        if (t.id !== tableId) return t;
+      const nextService: ServiceFlow = {
+        ...t.service,
+        history: [...t.service.history, snapshot],
+        timings: { ...t.service.timings },
+      };
 
-        const snapshot = cloneSteps(t.steps);
-        const nextAddOns = { ...t.addOns, cheeseCourse: enabled };
-        const nextSteps = rebuildStepsPreserveStatus(
-          t.steps,
-          enabled,
-          t.cheesePosition
-        );
+      const key = currentStep.key;
+      const timingKey = String(key);
+      const currentTiming = nextService.timings[timingKey] || {};
 
-        return {
-          ...t,
-          addOns: nextAddOns,
-          steps: nextSteps,
-          history: [
-            { steps: snapshot, at: new Date().toISOString(), note: `Cheese ${enabled ? "on" : "off"}` },
-            ...t.history,
-          ].slice(0, 25),
-        };
-      })
-    );
-  };
+      // mark timestamp for the NEW status we are moving INTO
+      const setTimingFor = (status: StepStatus) => {
+        const ts = now();
+        if (status === "called") currentTiming.calledAt = currentTiming.calledAt ?? ts;
+        if (status === "ready") currentTiming.readyAt = currentTiming.readyAt ?? ts;
+        if (status === "served") currentTiming.servedAt = currentTiming.servedAt ?? ts;
+        if (status === "cleared") currentTiming.clearedAt = currentTiming.clearedAt ?? ts;
+        nextService.timings[timingKey] = { ...currentTiming };
+      };
 
-  const setCheesePosition = (tableId: number, pos: CheesePosition) => {
-    setTables((prev) =>
-      prev.map((t) => {
-        if (t.id !== tableId) return t;
+      if (nextService.status === "called") {
+        nextService.status = "ready";
+        setTimingFor("ready");
+      } else if (nextService.status === "ready") {
+        nextService.status = "served";
+        setTimingFor("served");
+      } else if (nextService.status === "served") {
+        nextService.status = "cleared";
+        setTimingFor("cleared");
+      } else {
+        // cleared -> move to next step
+        if (nextService.stepIndex < maxIndex) {
+          nextService.stepIndex = nextService.stepIndex + 1;
+          nextService.status = "called";
+          const nextKey = String(steps[nextService.stepIndex].key);
+          const nextTiming = nextService.timings[nextKey] || {};
+          nextTiming.calledAt = nextTiming.calledAt ?? now();
+          nextService.timings[nextKey] = { ...nextTiming };
+        } else {
+          // last step cleared -> mark completed
+          return {
+            ...t,
+            completedAt: t.completedAt ?? now(),
+            service: nextService,
+          };
+        }
+      }
 
-        const snapshot = cloneSteps(t.steps);
-        const nextSteps = rebuildStepsPreserveStatus(t.steps, t.addOns.cheeseCourse, pos);
+      // Ensure calledAt exists for current step when it first becomes active
+      const ensureCalledAt = () => {
+        const activeKey = String(steps[nextService.stepIndex].key);
+        const activeTiming = nextService.timings[activeKey] || {};
+        activeTiming.calledAt = activeTiming.calledAt ?? now();
+        nextService.timings[activeKey] = { ...activeTiming };
+      };
+      ensureCalledAt();
 
-        return {
-          ...t,
-          cheesePosition: pos,
-          steps: nextSteps,
-          history: [
-            { steps: snapshot, at: new Date().toISOString(), note: `Cheese position ${pos}` },
-            ...t.history,
-          ].slice(0, 25),
-        };
-      })
-    );
-  };
-
-  // ---------- expo timing ----------
-  const stampExpo = (tableId: number, course: CourseKey, field: keyof ExpoTimes) => {
-    const iso = new Date().toISOString();
-    setTables((prev) =>
-      prev.map((t) => {
-        if (t.id !== tableId) return t;
-        return {
-          ...t,
-          expo: {
-            ...t.expo,
-            [course]: { ...t.expo[course], [field]: iso },
-          },
-        };
-      })
-    );
-  };
-
-  const clearExpoCourse = (tableId: number, course: CourseKey) => {
-    setTables((prev) =>
-      prev.map((t) => (t.id === tableId ? { ...t, expo: { ...t.expo, [course]: {} } } : t))
-    );
-  };
-
-  // ---------- pre-dinner logic ----------
-  const toggleArrived = (reservationId: string, arrived: boolean) => {
-    setPreDinner((prev) =>
-      prev.map((r) => (r.id === reservationId ? { ...r, arrived } : r))
-    );
-
-    const r = preDinner.find((x) => x.id === reservationId);
-    if (!r) return;
-
-    if (!arrived && r.assignedTableNum) {
-      setConfirmClear({ open: true, reservationId, tableNum: r.assignedTableNum });
-    }
-  };
-
-  // IMPORTANT: this function can be called from Pre tab OR Dinner seat-bar
-  const assignReservationToTable = (reservationId: string, tableNum?: number) => {
-    setPreDinner((prev) =>
-      prev.map((r) =>
-        r.id === reservationId ? { ...r, assignedTableNum: tableNum } : r
-      )
-    );
-
-    if (!tableNum) return;
-
-    const r = preDinner.find((x) => x.id === reservationId);
-    if (!r) return;
-
-    setTables((prev) =>
-      prev.map((t) => {
-        if (t.id !== tableNum) return t;
-
-        const hasCheese = r.notes.toLowerCase().includes("cheese");
-
-        return {
-          ...t,
-          occupiedByReservationId: reservationId,
-          roomNumber: r.roomNumber ?? "",
-          guestLastName: r.lastName ?? "",
-          guestsCount: r.partySize ?? 0,
-          seatTime: r.seatTime ?? "",
-
-          allergies: r.allergies ?? "",
-          occasion: r.occasion ?? "",
-          notes: r.notes ?? "",
-
-          addOns: {
-            ...t.addOns,
-            cheeseCourse: hasCheese ? true : t.addOns.cheeseCourse,
-          },
-          steps: buildSteps(hasCheese ? true : t.addOns.cheeseCourse, t.cheesePosition),
-          history: [],
-          expo: { starter: {}, entree: {}, dessert: {} },
-
-          satAtIso: t.satAtIso ?? new Date().toISOString(),
-          closedOut: false,
-          closedAtIso: undefined,
-        };
-      })
-    );
-
-    setSelectedId(tableNum);
-  };
-
-  const confirmFreeTable = () => {
-    const reservationId = confirmClear.reservationId;
-    const tableNum = confirmClear.tableNum;
-    if (!reservationId || !tableNum) {
-      setConfirmClear({ open: false });
-      return;
-    }
-
-    setPreDinner((prev) =>
-      prev.map((r) =>
-        r.id === reservationId ? { ...r, assignedTableNum: undefined, arrived: false } : r
-      )
-    );
-
-    setTables((prev) =>
-      prev.map((t) => {
-        if (t.id !== tableNum) return t;
-        if (t.occupiedByReservationId !== reservationId) return t;
-        return makeEmptyTable(tableNum);
-      })
-    );
-
-    setSelectedId((prevSel) => (prevSel === tableNum ? null : prevSel));
-    setConfirmClear({ open: false });
-  };
-
-  const cancelFreeTable = () => {
-    if (confirmClear.reservationId) {
-      setPreDinner((prev) =>
-        prev.map((r) =>
-          r.id === confirmClear.reservationId ? { ...r, arrived: true } : r
-        )
-      );
-    }
-    setConfirmClear({ open: false });
-  };
-
-  // ---------- closeout ----------
-  const requestCloseOut = (tableNum: number) => setConfirmCloseOut({ open: true, tableNum });
-
-  const confirmCloseOutYes = () => {
-    const tableNum = confirmCloseOut.tableNum;
-    if (!tableNum) {
-      setConfirmCloseOut({ open: false });
-      return;
-    }
-
-    setTables((prev) =>
-      prev.map((t) =>
-        t.id === tableNum
-          ? { ...t, closedOut: true, closedAtIso: new Date().toISOString() }
-          : t
-      )
-    );
-
-    setConfirmCloseOut({ open: false });
-  };
-
-  const cancelCloseOut = () => setConfirmCloseOut({ open: false });
-
-  // ---------- Guest DB quick add ----------
-  const [newGuest, setNewGuest] = useState({
-    lastName: "",
-    firstName: "",
-    phone: "",
-    email: "",
-    allergies: "",
-    notes: "",
-  });
-
-  const addGuestToDb = () => {
-    const lastName = newGuest.lastName.trim();
-    if (!lastName) return;
-    const id = `g_${Date.now()}`;
-    setGuestDb((prev) => [
-      {
-        id,
-        lastName,
-        firstName: newGuest.firstName.trim() || undefined,
-        phone: newGuest.phone.trim() || undefined,
-        email: newGuest.email.trim() || undefined,
-        defaultAllergies: newGuest.allergies.trim() || undefined,
-        notes: newGuest.notes.trim() || undefined,
-      },
-      ...prev,
-    ]);
-    setNewGuest({
-      lastName: "",
-      firstName: "",
-      phone: "",
-      email: "",
-      allergies: "",
-      notes: "",
+      return { ...t, service: nextService };
     });
   };
 
-  const [resForm, setResForm] = useState({
-    guestId: "",
-    roomNumber: "",
-    partySize: 2,
-    seatTime: "",
-    occasion: "",
-    notes: "",
-  });
+  const undoService = () => {
+    if (!selectedTable) return;
 
-  const addReservationFromGuest = () => {
-    const g = guestDb.find((x) => x.id === resForm.guestId);
-    if (!g) return;
+    updateTable(selectedTable.id, (t) => {
+      const history = t.service.history;
+      if (!history.length) return t;
 
-    const id = `r_${Date.now()}`;
-    setPreDinner((prev) => [
-      ...prev,
-      {
-        id,
-        lastName: g.lastName,
-        roomNumber: resForm.roomNumber.trim(),
-        partySize: Number(resForm.partySize || 1),
-        seatTime: resForm.seatTime.trim() || nowLocalHM(),
-        allergies: (g.defaultAllergies ?? "").trim(),
-        occasion: resForm.occasion.trim(),
-        notes: `${(g.notes ?? "").trim()}${g.notes && resForm.notes ? " • " : ""}${resForm.notes.trim()}`.trim(),
-        arrived: false,
-        assignedTableNum: undefined,
-      },
-    ]);
-
-    setResForm({
-      guestId: "",
-      roomNumber: "",
-      partySize: 2,
-      seatTime: "",
-      occasion: "",
-      notes: "",
+      const last = history[history.length - 1];
+      return {
+        ...t,
+        completedAt: undefined, // if you undo completion, remove completed state
+        service: {
+          ...t.service,
+          stepIndex: last.stepIndex,
+          status: last.status,
+          timings: cloneTimings(last.timingsSnapshot),
+          history: history.slice(0, history.length - 1),
+        },
+      };
     });
   };
 
-  // ---------- derived ----------
-  const satTables = useMemo(() => {
-    const relevant = tables.filter((t) => !!t.satAtIso && (t.guestLastName.trim() || t.closedOut));
+  const setGuestsCount = (count: number) => {
+    if (!selectedTable) return;
+    const nextCount = Math.max(1, Math.min(20, count));
+    const current = selectedTable.guests ?? [];
+    let nextGuests = current.slice(0, nextCount);
 
-    const active = relevant
-      .filter((t) => !t.closedOut)
-      .slice()
-      .sort((a, b) => (a.satAtIso ?? "").localeCompare(b.satAtIso ?? ""));
-
-    const completed = relevant
-      .filter((t) => t.closedOut)
-      .slice()
-      .sort((a, b) => (a.satAtIso ?? "").localeCompare(b.satAtIso ?? ""));
-
-    return { active, completed };
-  }, [tables]);
-
-  const occupiedTableIds = useMemo(() => {
-    const set = new Set<number>();
-    for (const t of tables) {
-      if (t.guestLastName.trim() && !t.closedOut) set.add(t.id);
+    if (nextGuests.length < nextCount) {
+      nextGuests = nextGuests.concat(buildGuests(nextCount - nextGuests.length));
     }
-    return set;
+
+    updateSelected({ guestsCount: nextCount, guests: nextGuests });
+  };
+
+  const updateGuest = (guestId: string, patch: Partial<GuestEntry>) => {
+    if (!selectedTable) return;
+    const nextGuests = selectedTable.guests.map((g) => (g.id === guestId ? { ...g, ...patch } : g));
+    updateSelected({ guests: nextGuests });
+  };
+
+  const addBottle = () => {
+    if (!selectedTable) return;
+    const wine = selectedBottleToAdd.trim();
+    if (!wine) return;
+    updateSelected({ bottles: [...selectedTable.bottles, wine] });
+    setSelectedBottleToAdd("");
+  };
+
+  const removeBottle = (idx: number) => {
+    if (!selectedTable) return;
+    const next = selectedTable.bottles.slice();
+    next.splice(idx, 1);
+    updateSelected({ bottles: next });
+  };
+
+  const addBtg = () => {
+    if (!selectedTable) return;
+    const wine = selectedBtgToAdd.trim();
+    if (!wine) return;
+    updateSelected({ btg: [...selectedTable.btg, wine] });
+    setSelectedBtgToAdd("");
+  };
+
+  const removeBtg = (idx: number) => {
+    if (!selectedTable) return;
+    const next = selectedTable.btg.slice();
+    next.splice(idx, 1);
+    updateSelected({ btg: next });
+  };
+
+  const tableBadges = useMemo(() => {
+    const map = new Map<number, { hasAllergy: boolean; allergyPreview: string; hasSub: boolean }>();
+
+    tables.forEach((t) => {
+      const allergyLines = (t.guests || [])
+        .map((g) => g.allergy.trim())
+        .filter(Boolean);
+
+      const hasAllergy = allergyLines.length > 0;
+      const allergyPreview = hasAllergy ? allergyLines[0].slice(0, 18) : "";
+
+      const hasSub = (t.guests || []).some((g) => g.proteinSub === "chicken" || g.proteinSub === "fish");
+
+      map.set(t.id, { hasAllergy, allergyPreview, hasSub });
+    });
+
+    return map;
   }, [tables]);
 
-  // NEW: Dinner seat bar options
-  const arrivedUnseatedReservations = useMemo(() => {
-    return preDinner
-      .filter((r) => r.arrived && !r.assignedTableNum)
+  // Ordering: active (not completed) first by seatedAt asc; completed muted at bottom
+  const orderedTables = useMemo(() => {
+    const active = tables
+      .filter((t) => !t.completedAt)
       .slice()
-      .sort((a, b) => a.seatTime.localeCompare(b.seatTime));
-  }, [preDinner]);
+      .sort((a, b) => (a.seatedAt ?? 0) - (b.seatedAt ?? 0));
+    const done = tables
+      .filter((t) => !!t.completedAt)
+      .slice()
+      .sort((a, b) => (a.seatedAt ?? 0) - (b.seatedAt ?? 0));
+    return [...active, ...done];
+  }, [tables]);
 
-  const seatGuestFromDinnerBar = () => {
-    if (!seatBar.reservationId || !seatBar.tableNum) return;
-    const tableNum = Number(seatBar.tableNum);
-    if (!tableNum) return;
-    if (occupiedTableIds.has(tableNum)) return;
+  const selectedStep = useMemo(() => {
+    if (!selectedTable) return null;
+    const steps = baseSteps(selectedTable);
+    return steps[selectedTable.service.stepIndex] || null;
+  }, [selectedTable]);
 
-    assignReservationToTable(seatBar.reservationId, tableNum);
-    setSelectedId(tableNum);
-    setSeatBar({ reservationId: "", tableNum: "" });
-  };
+  const selectedTiming = useMemo(() => {
+    if (!selectedTable || !selectedStep) return null;
+    return selectedTable.service.timings[String(selectedStep.key)] || {};
+  }, [selectedTable, selectedStep]);
+
+  const entreeTiming = useMemo(() => {
+    if (!selectedTable) return null;
+    const t = selectedTable.service.timings["entree"] || {};
+    return {
+      called: t.calledAt,
+      ready: t.readyAt,
+      served: t.servedAt,
+      cleared: t.clearedAt,
+    };
+  }, [selectedTable]);
 
   return (
-    <MainLayout title="Dinner Service" subtitle="Pre-dinner setup + live course tracking">
-      {/* Tabs */}
-      <div className="flex items-center gap-2 mb-4">
-        <TabButton active={tab === "pre"} onClick={() => setTab("pre")}>
-          Pre-dinner
-        </TabButton>
-        <TabButton active={tab === "dinner"} onClick={() => setTab("dinner")}>
-          Dinner service
-        </TabButton>
-      </div>
-
-      {tab === "pre" ? (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-          {/* Pre-dinner list */}
-          <section className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-[#E8D4B8] flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
-                  Pre-dinner list
-                </h2>
-                <p className="text-[11px] text-[#7B5A45] mt-0.5">
-                  Mark arrived now. (Seating + table selection happens on Dinner tab.)
-                </p>
-              </div>
-              <span className="text-[11px] text-[#7B5A45]">
-                {preDinner.filter((r) => r.arrived).length}/{preDinner.length} arrived
-              </span>
+    <MainLayout title="Dinner Service" subtitle="One-click service flow + wines + guest notes">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)]">
+        {/* Tables list */}
+        <aside className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-[#E8D4B8] flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                Tonight&apos;s Tables
+              </h2>
+              <p className="text-[11px] text-[#7B5A45] mt-0.5">
+                Shows current step + status. Completed tables move to bottom.
+              </p>
             </div>
+            <span className="text-[11px] text-[#7B5A45]">{tables.length} total</span>
+          </div>
 
-            <div className="divide-y divide-[#F0E0CF]">
-              {preDinner
-                .slice()
-                .sort((a, b) => a.seatTime.localeCompare(b.seatTime))
-                .map((r) => (
-                  <div key={r.id} className="px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-[#3B2620]">
-                          {r.lastName}{" "}
-                          <span className="text-xs font-normal text-[#7B5A45]">
-                            • {r.partySize} {r.partySize === 1 ? "guest" : "guests"}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-[#7B5A45] mt-0.5">
-                          {r.roomNumber ? `Room: ${r.roomNumber}` : "Room: —"} • Seat: {r.seatTime || "—"}
-                          {r.occasion ? ` • ${r.occasion}` : ""}
-                          {r.allergies ? ` • Allergy: ${r.allergies}` : ""}
-                        </div>
-                        {r.notes ? (
-                          <div className="text-[11px] text-[#7B5A45] mt-1">
-                            Notes: {r.notes}
-                          </div>
-                        ) : null}
+          <div className="divide-y divide-[#F0E0CF]">
+            {orderedTables.map((table) => {
+              const isActive = table.id === selectedId;
+              const badges = tableBadges.get(table.id);
+
+              const steps = baseSteps(table);
+              const step = steps[table.service.stepIndex];
+              const stepLabel = step?.label ?? "—";
+              const stLabel = statusLabel(table.service.status);
+
+              const isDone = !!table.completedAt;
+
+              return (
+                <button
+                  key={table.id}
+                  onClick={() => setSelectedId(table.id)}
+                  className={[
+                    "w-full text-left px-4 py-3 transition flex flex-col gap-2",
+                    isDone
+                      ? "bg-slate-50 text-slate-500"
+                      : isActive
+                      ? "bg-[#6B1F2F] text-[#FDF7EE]"
+                      : "hover:bg-[#FDF8F2] text-[#3B2620]",
+                  ].join(" ")}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold">
+                        {table.tableNumber}{" "}
+                        <span className={isActive ? "opacity-90" : "text-[#7B5A45]"}>
+                          • {table.roomNumber || "No room"} {table.reservationTime ? `• ${table.reservationTime}` : ""}
+                        </span>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-2 text-sm text-[#3B2620]">
-                          <input
-                            type="checkbox"
-                            checked={r.arrived}
-                            onChange={(e) => toggleArrived(r.id, e.target.checked)}
-                          />
-                          Arrived
-                        </label>
+                      <div className={isActive ? "text-[11px] opacity-90" : "text-[11px] text-[#7B5A45]"}>
+                        Party: <span className="font-semibold">{table.partyLabel || "—"}</span> • {table.guestsCount}{" "}
+                        {table.guestsCount === 1 ? "guest" : "guests"}
+                      </div>
 
-                        {r.assignedTableNum ? (
-                          <span className="text-[11px] text-[#7B5A45]">
-                            Assigned: Table {r.assignedTableNum}
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span
+                          className={[
+                            "text-[11px] px-2 py-0.5 rounded-full border font-semibold",
+                            isDone ? "bg-slate-100 text-slate-600 border-slate-200" : statusColor(table.service.status),
+                          ].join(" ")}
+                        >
+                          {stepLabel}: {stLabel}
+                        </span>
+
+                        {badges?.hasAllergy && (
+                          <span
+                            className={[
+                              "text-[10px] px-2 py-0.5 rounded-full font-semibold border",
+                              isActive ? "bg-[#FDE4E2] text-[#8E2525] border-[#F0E0CF]" : "bg-[#FDEBE8] text-[#8E2525] border-[#F0E0CF]",
+                            ].join(" ")}
+                            title={badges.allergyPreview}
+                          >
+                            ⚠ Allergy{badges.allergyPreview ? `: ${badges.allergyPreview}…` : ""}
                           </span>
-                        ) : (
-                          <span className="text-[11px] text-[#7B5A45]">
-                            (Seat on Dinner tab)
+                        )}
+
+                        {badges?.hasSub && (
+                          <span
+                            className={[
+                              "text-[10px] px-2 py-0.5 rounded-full font-semibold border",
+                              isActive ? "bg-[#EEF2FF] text-[#1E3A8A] border-[#E8D4B8]" : "bg-[#EEF2FF] text-[#1E3A8A] border-[#E8D4B8]",
+                            ].join(" ")}
+                          >
+                            Protein Sub
                           </span>
                         )}
                       </div>
                     </div>
+
+                    {isDone ? (
+                      <span className="text-[11px] text-slate-500">Completed</span>
+                    ) : (
+                      <span className="text-[11px] text-[#7B5A45]">{table.service.history.length ? "Live" : "New"}</span>
+                    )}
                   </div>
-                ))}
-            </div>
-          </section>
-
-          {/* Guest database */}
-          <section className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm p-4">
-            <h2 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
-              Guest database
-            </h2>
-            <p className="text-[11px] text-[#7B5A45] mt-0.5 mb-3">
-              Add guests ahead of service, then create tonight’s reservation quickly
-            </p>
-
-            <div className="rounded-xl border border-[#F0E0CF] bg-[#FDF8F2] p-3 mb-4">
-              <div className="text-xs font-semibold text-[#7B5A45] mb-2">Add guest</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <input
-                  placeholder="Last name *"
-                  value={newGuest.lastName}
-                  onChange={(e) => setNewGuest((p) => ({ ...p, lastName: e.target.value }))}
-                  className="w-full rounded-lg border border-[#E0C6AF] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                />
-                <input
-                  placeholder="First name"
-                  value={newGuest.firstName}
-                  onChange={(e) => setNewGuest((p) => ({ ...p, firstName: e.target.value }))}
-                  className="w-full rounded-lg border border-[#E0C6AF] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                />
-                <input
-                  placeholder="Phone"
-                  value={newGuest.phone}
-                  onChange={(e) => setNewGuest((p) => ({ ...p, phone: e.target.value }))}
-                  className="w-full rounded-lg border border-[#E0C6AF] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                />
-                <input
-                  placeholder="Email"
-                  value={newGuest.email}
-                  onChange={(e) => setNewGuest((p) => ({ ...p, email: e.target.value }))}
-                  className="w-full rounded-lg border border-[#E0C6AF] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                />
-              </div>
-              <textarea
-                placeholder="Allergies / restrictions"
-                value={newGuest.allergies}
-                onChange={(e) => setNewGuest((p) => ({ ...p, allergies: e.target.value }))}
-                className="mt-2 w-full rounded-lg border border-[#E0C6AF] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                rows={2}
-              />
-              <textarea
-                placeholder="Notes (preferences, usual wine, etc.)"
-                value={newGuest.notes}
-                onChange={(e) => setNewGuest((p) => ({ ...p, notes: e.target.value }))}
-                className="mt-2 w-full rounded-lg border border-[#E0C6AF] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                rows={2}
-              />
-              <div className="mt-2 flex justify-end">
-                <button
-                  onClick={addGuestToDb}
-                  className="rounded-lg bg-[#6B1F2F] text-white px-3 py-2 text-sm hover:bg-[#4A1520] transition"
-                >
-                  Add guest
                 </button>
-              </div>
-            </div>
+              );
+            })}
+          </div>
+        </aside>
 
-            <div className="rounded-xl border border-[#F0E0CF] bg-white p-3">
-              <div className="text-xs font-semibold text-[#7B5A45] mb-2">Create tonight’s reservation</div>
-
-              <div className="grid grid-cols-1 gap-2">
-                <select
-                  value={resForm.guestId}
-                  onChange={(e) => setResForm((p) => ({ ...p, guestId: e.target.value }))}
-                  className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                >
-                  <option value="">Select guest…</option>
-                  {guestDb
-                    .slice()
-                    .sort((a, b) => a.lastName.localeCompare(b.lastName))
-                    .map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.lastName}{g.firstName ? `, ${g.firstName}` : ""}
-                        {g.defaultAllergies ? " (allergy)" : ""}
-                      </option>
-                    ))}
-                </select>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <input
-                    placeholder="Room / cabin"
-                    value={resForm.roomNumber}
-                    onChange={(e) => setResForm((p) => ({ ...p, roomNumber: e.target.value }))}
-                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                  />
-                  <input
-                    placeholder="Seat time (HH:MM)"
-                    value={resForm.seatTime}
-                    onChange={(e) => setResForm((p) => ({ ...p, seatTime: e.target.value }))}
-                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    placeholder="Party size"
-                    value={resForm.partySize}
-                    onChange={(e) => setResForm((p) => ({ ...p, partySize: Number(e.target.value) }))}
-                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                  />
-                  <input
-                    placeholder="Occasion (anniversary, birthday…) "
-                    value={resForm.occasion}
-                    onChange={(e) => setResForm((p) => ({ ...p, occasion: e.target.value }))}
-                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                  />
-                </div>
-
-                <textarea
-                  placeholder="Notes for tonight"
-                  value={resForm.notes}
-                  onChange={(e) => setResForm((p) => ({ ...p, notes: e.target.value }))}
-                  rows={2}
-                  className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                />
-
-                <div className="flex justify-end">
-                  <button
-                    onClick={addReservationFromGuest}
-                    className="rounded-lg border border-[#6B1F2F] text-[#6B1F2F] px-3 py-2 text-sm hover:bg-[#6B1F2F] hover:text-white transition"
-                  >
-                    Add to pre-dinner list
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-      ) : (
-        // ---------------- Dinner tab ----------------
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.7fr)]">
-          {/* LEFT list */}
-          <aside className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-[#E8D4B8] flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
-                  Seated tables
-                </h2>
-                <p className="text-[11px] text-[#7B5A45] mt-0.5">
-                  First sat at the top • Completed tables drop to bottom
-                </p>
-              </div>
-              <span className="text-[11px] text-[#7B5A45]">
-                {satTables.active.length} active • {satTables.completed.length} completed
-              </span>
-            </div>
-
-            <div className="p-3 space-y-3">
-              {satTables.active.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-[#E8D4B8] bg-[#FDF8F2] p-4 text-sm text-[#7B5A45]">
-                  No tables seated yet. Use the “Seat guests” bar on the right.
-                </div>
-              ) : null}
-
-              {satTables.active.map((t) => {
-                const isActive = t.id === selectedId;
-                const current = getFirstTodoStep(t);
-                const currentLabel = current ? current.label : "All steps done";
-
-                let stage = { label: "—", key: "not" as const };
-                if (current && isCourseKey(current.key)) stage = expoStage(t.expo[current.key]);
-
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => setSelectedId(t.id)}
-                    className={[
-                      "w-full rounded-2xl border px-4 py-3 text-left transition",
-                      isActive
-                        ? "border-[#6B1F2F] bg-[#6B1F2F] text-[#FDF7EE]"
-                        : "border-[#E8D4B8] bg-white hover:bg-[#FDF8F2] text-[#3B2620]",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="text-base font-semibold">Table {t.id}</div>
-                          <span className={isActive ? "text-[11px] opacity-90" : "text-[11px] text-[#7B5A45]"}>
-                            {t.seatTime ? `Seat ${t.seatTime}` : "Seat —"}
-                          </span>
-                        </div>
-
-                        <div className={isActive ? "text-[12px] opacity-90 mt-0.5" : "text-[12px] text-[#7B5A45] mt-0.5"}>
-                          <span className="font-medium text-inherit">{t.guestLastName || "—"}</span>
-                          <span className="mx-1">•</span>
-                          <span>{t.roomNumber || "—"}</span>
-                          <span className="mx-1">•</span>
-                          <span>{t.guestsCount ? `${t.guestsCount}p` : "—"}</span>
-                        </div>
-
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span
-                            className={[
-                              "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                              isActive
-                                ? "bg-white/10 border-white/20 text-white"
-                                : "bg-[#FDF8F2] border-[#E8D4B8] text-[#4A1520]",
-                            ].join(" ")}
-                          >
-                            Current: {currentLabel}
-                          </span>
-
-                          {current && isCourseKey(current.key) ? (
-                            <span
-                              className={[
-                                "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                                isActive
-                                  ? "bg-white/10 border-white/20 text-white"
-                                  : stagePillClass(stage.key),
-                              ].join(" ")}
-                            >
-                              {stage.label}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="shrink-0">
-                        <div className={isActive ? "text-[11px] opacity-90" : "text-[11px] text-[#7B5A45]"}>
-                          {t.allergies?.trim() ? "Allergy" : ""}
-                          {t.allergies?.trim() &&
-                          (t.addOns.cheeseCourse || t.addOns.wineBottle || t.addOns.wineBTG || t.addOns.sparklingWater)
-                            ? " • "
-                            : ""}
-                          {t.addOns.cheeseCourse || t.addOns.wineBottle || t.addOns.wineBTG || t.addOns.sparklingWater
-                            ? "Add-ons"
-                            : ""}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-
-              {satTables.completed.length > 0 ? (
-                <div className="pt-2">
-                  <div className="text-[11px] font-semibold text-[#7B5A45] px-1 mb-2">
-                    Completed
-                  </div>
-                  <div className="space-y-2">
-                    {satTables.completed.map((t) => {
-                      const isActive = t.id === selectedId;
-                      return (
-                        <button
-                          key={t.id}
-                          onClick={() => setSelectedId(t.id)}
-                          className={[
-                            "w-full rounded-2xl border px-4 py-3 text-left transition",
-                            isActive
-                              ? "border-[#6B1F2F] bg-[#6B1F2F] text-[#FDF7EE]"
-                              : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100",
-                          ].join(" ")}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <div className="text-base font-semibold">Table {t.id}</div>
-                                <span className={isActive ? "text-[11px] opacity-90" : "text-[11px] text-slate-500"}>
-                                  {t.seatTime ? `Seat ${t.seatTime}` : "Seat —"}
-                                </span>
-                              </div>
-
-                              <div className={isActive ? "text-[12px] opacity-90 mt-0.5" : "text-[12px] text-slate-500 mt-0.5"}>
-                                <span className="font-medium text-inherit">{t.guestLastName || "—"}</span>
-                                <span className="mx-1">•</span>
-                                <span>{t.roomNumber || "—"}</span>
-                                <span className="mx-1">•</span>
-                                <span>{t.guestsCount ? `${t.guestsCount}p` : "—"}</span>
-                              </div>
-
-                              <div className="mt-2">
-                                <span className={isActive ? "text-[11px] opacity-90" : "text-[11px] text-slate-500"}>
-                                  Closed out
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="shrink-0">
-                              <span
-                                className={[
-                                  "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                                  isActive
-                                    ? "bg-white/10 border-white/20 text-white"
-                                    : "bg-slate-100 border-slate-200 text-slate-700",
-                                ].join(" ")}
-                              >
-                                Completed
-                              </span>
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </aside>
-
-          {/* RIGHT: Seat bar + detail panel */}
-          <section className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm p-5">
-            {/* NEW: seat guests bar */}
-            <div className="rounded-2xl border border-[#E8D4B8] bg-[#FDF8F2] p-4 mb-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
-                    Seat guests
-                  </div>
-                  <div className="text-[11px] text-[#7B5A45] mt-0.5">
-                    Pick an arrived reservation, choose a table, then seat them (table appears on left)
-                  </div>
-                </div>
-                <div className="text-[11px] text-[#7B5A45]">
-                  Arrived unseated: {arrivedUnseatedReservations.length}
-                </div>
-              </div>
-
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_auto] gap-2">
-                <select
-                  value={seatBar.reservationId}
-                  onChange={(e) => setSeatBar((p) => ({ ...p, reservationId: e.target.value }))}
-                  className="w-full rounded-lg border border-[#E0C6AF] bg-white px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                >
-                  <option value="">Select arrived guest…</option>
-                  {arrivedUnseatedReservations.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.lastName} • {r.roomNumber || "—"} • {r.partySize}p • {r.seatTime || "—"}
-                      {r.allergies ? " • Allergy" : ""}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={seatBar.tableNum}
-                  onChange={(e) => setSeatBar((p) => ({ ...p, tableNum: e.target.value }))}
-                  className="w-full rounded-lg border border-[#E0C6AF] bg-white px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                >
-                  <option value="">Select table…</option>
-                  {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n} disabled={occupiedTableIds.has(n)}>
-                      Table {n}{occupiedTableIds.has(n) ? " (occupied)" : ""}
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  onClick={seatGuestFromDinnerBar}
-                  disabled={!seatBar.reservationId || !seatBar.tableNum || occupiedTableIds.has(Number(seatBar.tableNum))}
-                  className={[
-                    "rounded-lg px-4 py-2 text-sm font-semibold transition",
-                    !seatBar.reservationId || !seatBar.tableNum || occupiedTableIds.has(Number(seatBar.tableNum))
-                      ? "bg-slate-200 text-slate-500 cursor-not-allowed"
-                      : "bg-[#6B1F2F] text-white hover:bg-[#4A1520]",
-                  ].join(" ")}
-                >
-                  Seat
-                </button>
-              </div>
-            </div>
-
-            {/* existing detail panel */}
-            {!selectedTable ? (
-              <p className="text-sm text-[#7B5A45]">
-                Seat a reservation above or select a table on the left.
-              </p>
-            ) : (
-              <>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#F0E0CF] pb-3 mb-4">
+        {/* Detail / form */}
+        <section className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm p-5">
+          {selectedTable ? (
+            <>
+              {/* Top controls: one-click + undo */}
+              <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4 mb-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
-                      Table {selectedTable.id} • {selectedTable.guestLastName || "—"}
-                    </h2>
-                    <p className="text-xs text-[#7B5A45] mt-0.5">
-                      {selectedTable.roomNumber ? `Room ${selectedTable.roomNumber}` : "Room —"} •{" "}
-                      {selectedTable.seatTime ? `Seat ${selectedTable.seatTime}` : "Seat —"} •{" "}
-                      {selectedTable.guestsCount ? `${selectedTable.guestsCount} guests` : "—"}
-                      {selectedTable.occasion ? ` • ${selectedTable.occasion}` : ""}
-                      {selectedTable.allergies ? ` • Allergy: ${selectedTable.allergies}` : ""}
-                    </p>
+                    <div className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                      One-click service control
+                    </div>
+                    <div className="text-[11px] text-[#7B5A45] mt-0.5">
+                      Advances status + step automatically. Undo reverses the last click.
+                    </div>
+                    {selectedStep ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className={`text-[12px] px-2.5 py-1 rounded-full border font-semibold ${statusColor(selectedTable.service.status)}`}>
+                          {selectedStep.label}: {statusLabel(selectedTable.service.status)}
+                        </span>
+                        <span className="text-[11px] text-[#7B5A45]">
+                          Called: {fmtTime(selectedTiming?.calledAt)} • Ready: {fmtTime(selectedTiming?.readyAt)} • Served:{" "}
+                          {fmtTime(selectedTiming?.servedAt)} • Cleared: {fmtTime(selectedTiming?.clearedAt)}
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => undoLast(selectedTable.id)}
-                      disabled={selectedTable.history.length === 0}
-                      className={[
-                        "rounded-lg px-3 py-2 text-sm border transition",
-                        selectedTable.history.length === 0
-                          ? "border-slate-200 text-slate-400 cursor-not-allowed"
-                          : "border-[#6B1F2F] text-[#6B1F2F] hover:bg-[#6B1F2F] hover:text-white",
-                      ].join(" ")}
-                      title={selectedTable.history[0]?.note ? `Undo: ${selectedTable.history[0].note}` : "Undo"}
+                      type="button"
+                      onClick={undoService}
+                      disabled={!selectedTable.service.history.length}
+                      className="rounded-lg px-3 py-2 text-sm border border-[#E8D4B8] bg-white hover:bg-[#FDF8F2] disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ color: "#6B1F2F" }}
                     >
                       Undo
                     </button>
 
                     <button
-                      onClick={() => requestCloseOut(selectedTable.id)}
-                      disabled={selectedTable.closedOut}
-                      className={[
-                        "rounded-lg px-3 py-2 text-sm border transition",
-                        selectedTable.closedOut
-                          ? "border-slate-200 text-slate-400 cursor-not-allowed"
-                          : "border-slate-300 text-slate-700 hover:bg-slate-50",
-                      ].join(" ")}
+                      type="button"
+                      onClick={advanceService}
+                      className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                      style={{ backgroundColor: "#6B1F2F" }}
                     >
-                      Close out
+                      Next
                     </button>
                   </div>
                 </div>
 
-                {/* Steps */}
-                <div className="mb-5">
-                  <div className="text-xs font-semibold text-[#7B5A45] mb-2">
-                    Service steps (click to toggle done)
-                  </div>
+                {/* Entree timing quick view */}
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 text-xs">
+                  <TimeChip label="Entree Called" value={fmtTime(entreeTiming?.called)} />
+                  <TimeChip label="Entree Ready" value={fmtTime(entreeTiming?.ready)} />
+                  <TimeChip label="Entree Served" value={fmtTime(entreeTiming?.served)} />
+                  <TimeChip label="Entree Minutes (Called→Served)" value={`${minsBetween(entreeTiming?.called, entreeTiming?.served) ?? "—"}`} />
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {selectedTable.steps.map((s) => {
-                      const isDone = s.status === "done";
-                      return (
-                        <button
-                          key={s.key}
-                          onClick={() => toggleStepDone(selectedTable.id, s.key)}
-                          className={[
-                            "rounded-xl border px-3 py-3 text-left transition flex items-center justify-between gap-3",
-                            s.color,
-                            isDone ? "opacity-70" : "opacity-100",
-                          ].join(" ")}
-                        >
-                          <div className="font-semibold text-sm">{s.label}</div>
-                          <div className="text-xs font-semibold">
-                            {isDone ? "DONE" : "TODO"}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <p className="text-[11px] text-[#7B5A45] mt-2">
-                    Click again to reverse a step. Use <b>Undo</b> for last action. Goodbye done will auto-close out.
-                  </p>
+              {/* Party / guest controls */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Party label (last name)</label>
+                  <input
+                    type="text"
+                    value={selectedTable.partyLabel}
+                    onChange={(e) => updateSelected({ partyLabel: e.target.value })}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                  />
                 </div>
 
-                {/* Add-ons + cheese placement */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                  <div className="rounded-xl border border-[#F0E0CF] bg-[#FDF8F2] p-3">
-                    <div className="text-xs font-semibold text-[#7B5A45] mb-2">Add-ons</div>
-                    <div className="space-y-2 text-sm text-[#3B2620]">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedTable.addOns.sparklingWater}
-                          onChange={(e) =>
-                            updateTable(selectedTable.id, {
-                              addOns: { ...selectedTable.addOns, sparklingWater: e.target.checked },
-                            })
-                          }
-                        />
-                        Sparkling water
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedTable.addOns.wineBTG}
-                          onChange={(e) =>
-                            updateTable(selectedTable.id, {
-                              addOns: { ...selectedTable.addOns, wineBTG: e.target.checked },
-                            })
-                          }
-                        />
-                        Wine BTG
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedTable.addOns.wineBottle}
-                          onChange={(e) =>
-                            updateTable(selectedTable.id, {
-                              addOns: { ...selectedTable.addOns, wineBottle: e.target.checked },
-                            })
-                          }
-                        />
-                        Bottle
-                      </label>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Room / cabin</label>
+                  <input
+                    type="text"
+                    value={selectedTable.roomNumber ?? ""}
+                    onChange={(e) => updateSelected({ roomNumber: e.target.value })}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                  />
+                </div>
 
-                      <label className="flex items-center gap-2">
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Guests</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setGuestsCount(selectedTable.guestsCount - 1)}
+                      className="rounded-lg border border-[#E0C6AF] bg-white px-3 py-2 text-sm hover:bg-[#FDF8F2]"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={selectedTable.guestsCount}
+                      onChange={(e) => setGuestsCount(Number(e.target.value || 1))}
+                      className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setGuestsCount(selectedTable.guestsCount + 1)}
+                      className="rounded-lg border border-[#E0C6AF] bg-white px-3 py-2 text-sm hover:bg-[#FDF8F2]"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Guests at table: allergies + protein subs */}
+              <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4 mb-5">
+                <div>
+                  <div className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                    Guests at table
+                  </div>
+                  <div className="text-[11px] text-[#7B5A45] mt-0.5">
+                    Allergies + protein subs show as badges on the left list (no click needed).
+                  </div>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  {selectedTable.guests.map((g, idx) => (
+                    <div
+                      key={g.id}
+                      className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.7fr)] gap-2 rounded-xl border px-3 py-2"
+                      style={{ borderColor: "#F0E0CF" }}
+                    >
+                      <div>
+                        <label className="block text-[11px] font-semibold mb-1 text-[#7B5A45]">Guest {idx + 1} name</label>
                         <input
-                          type="checkbox"
-                          checked={selectedTable.addOns.cheeseCourse}
-                          onChange={(e) => setCheeseCourse(selectedTable.id, e.target.checked)}
+                          value={g.name}
+                          onChange={(e) => updateGuest(g.id, { name: e.target.value })}
+                          className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                          placeholder="(optional)"
                         />
-                        Cheese course
-                      </label>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold mb-1 text-[#7B5A45]">Allergies</label>
+                        <input
+                          value={g.allergy}
+                          onChange={(e) => updateGuest(g.id, { allergy: e.target.value })}
+                          className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                          placeholder="No nuts, dairy, no garlic…"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold mb-1 text-[#7B5A45]">Protein sub</label>
+                        <select
+                          value={g.proteinSub}
+                          onChange={(e) => updateGuest(g.id, { proteinSub: e.target.value as ProteinSub })}
+                          className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                        >
+                          <option value="">None</option>
+                          <option value="chicken">Chicken</option>
+                          <option value="fish">Fish</option>
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Add-ons + placements */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4">
+                  <div className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                    Add-ons
+                  </div>
+
+                  <div className="mt-3 space-y-2 text-sm text-[#3B2620]">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={selectedTable.addOns.cheeseBoard} onChange={() => handleAddOnToggle("cheeseBoard")} />
+                      Cheese board
+                    </label>
+
+                    {selectedTable.addOns.cheeseBoard ? (
+                      <div className="pl-6">
+                        <label className="block text-[11px] font-semibold mb-1 text-[#7B5A45]">Insert cheese board</label>
+                        <select
+                          value={selectedTable.cheesePlacement}
+                          onChange={(e) => updateSelected({ cheesePlacement: e.target.value as any })}
+                          className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                        >
+                          <option value="after_seated">After Seated</option>
+                          <option value="after_bread_water">After Bread & Water</option>
+                          <option value="after_wine_service">After Wine Service</option>
+                          <option value="after_starter">After Starter</option>
+                          <option value="after_entree">After Entree</option>
+                          <option value="after_coffee_tea">After Coffee/Tea</option>
+                          <option value="after_dessert">After Dessert</option>
+                        </select>
+                        <div className="text-[11px] text-[#7B5A45] mt-1">
+                          This creates a “Cheese Board” step in the one-click flow.
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedTable.addOns.sparklingWater}
+                        onChange={() => handleAddOnToggle("sparklingWater")}
+                      />
+                      Sparkling water
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={selectedTable.addOns.dessertWine} onChange={() => handleAddOnToggle("dessertWine")} />
+                      Dessert wine
+                    </label>
+                  </div>
+                </div>
+
+                {/* Coffee/Tea service */}
+                <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                        Coffee / Tea service
+                      </div>
+                      <div className="text-[11px] text-[#7B5A45] mt-0.5">Optional step between entree and dessert</div>
+                    </div>
+
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedTable.coffeeTea.enabled}
+                        onChange={() =>
+                          updateSelected({
+                            coffeeTea: {
+                              ...selectedTable.coffeeTea,
+                              enabled: !selectedTable.coffeeTea.enabled,
+                              ...(selectedTable.coffeeTea.enabled ? { choice: "" } : {}),
+                            },
+                          })
+                        }
+                      />
+                      Enable
+                    </label>
+                  </div>
+
+                  {selectedTable.coffeeTea.enabled ? (
+                    <div className="mt-3 space-y-2">
+                      <label className="block text-[11px] font-semibold mb-1 text-[#7B5A45]">Coffee / Tea choice</label>
+                      <select
+                        value={selectedTable.coffeeTea.choice}
+                        onChange={(e) => updateSelected({ coffeeTea: { ...selectedTable.coffeeTea, choice: e.target.value as CoffeeTeaChoice } })}
+                        className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                      >
+                        <option value="">Select…</option>
+                        <option value="coffee">Coffee</option>
+                        <option value="decaf">Decaf</option>
+                        <option value="nespresso">Nespresso</option>
+                        <option value="tea">Tea</option>
+                        <option value="port">Port wine</option>
+                      </select>
+
+                      <div className="text-[11px] text-[#7B5A45]">
+                        Turning this on adds “Coffee/Tea” to the one-click flow.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-xs text-slate-500">Off</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Wines */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                {/* Bottles */}
+                <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4">
+                  <div>
+                    <div className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                      Bottles
+                    </div>
+                    <div className="text-[11px] text-[#7B5A45] mt-0.5">
+                      Choose from inventory{invLoading ? " (loading…)" : ""}{invError ? ` (error: ${invError})` : ""}
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-[#F0E0CF] bg-white p-3">
-                    <div className="text-xs font-semibold text-[#7B5A45] mb-2">Cheese placement</div>
-                    <p className="text-[11px] text-[#7B5A45] mb-2">
-                      If cheese is enabled, choose where it appears in the flow.
-                    </p>
+                  <div className="mt-3 flex gap-2">
                     <select
-                      value={selectedTable.cheesePosition}
-                      onChange={(e) => setCheesePosition(selectedTable.id, e.target.value as CheesePosition)}
-                      className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                      value={selectedBottleToAdd}
+                      onChange={(e) => setSelectedBottleToAdd(e.target.value)}
+                      className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
                     >
-                      <option value="after_wine">After wine service</option>
-                      <option value="after_starter">After starter</option>
-                      <option value="after_entree">After entrée</option>
+                      <option value="">Select bottle…</option>
+                      {inventoryWines.map((w) => (
+                        <option key={w} value={w}>
+                          {w}
+                        </option>
+                      ))}
                     </select>
-                  </div>
-                </div>
-
-                {/* Notes */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                  <div>
-                    <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">
-                      Drinks / wine notes
-                    </label>
-                    <textarea
-                      value={selectedTable.drinks}
-                      onChange={(e) => updateTable(selectedTable.id, { drinks: e.target.value })}
-                      rows={3}
-                      className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                      placeholder="BTG / bottle / pairing notes…"
-                    />
+                    <button type="button" onClick={addBottle} className="rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ backgroundColor: "#6B1F2F" }}>
+                      Add
+                    </button>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">
-                      Service notes
-                    </label>
-                    <textarea
-                      value={selectedTable.notes}
-                      onChange={(e) => updateTable(selectedTable.id, { notes: e.target.value })}
-                      rows={3}
-                      className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
-                      placeholder="Pacing, VIP, special occasions, etc."
-                    />
-                  </div>
-                </div>
-
-                {/* Expo timing panel */}
-                <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
-                      Expo timing
-                    </h3>
-                    <span className="text-[11px] text-[#7B5A45]">
-                      Track called → ready → served → cleared
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-                    {(["starter", "entree", "dessert"] as CourseKey[]).map((course) => {
-                      const times = selectedTable.expo[course];
-                      const stage = expoStage(times);
-
-                      return (
-                        <div key={course} className="rounded-xl border border-[#F0E0CF] bg-[#FDF8F2] p-3">
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm font-semibold text-[#3B2620] capitalize">
-                              {course}
-                            </div>
-                            <button
-                              onClick={() => clearExpoCourse(selectedTable.id, course)}
-                              className="text-[11px] text-[#6B1F2F] hover:underline"
-                            >
-                              Clear
-                            </button>
-                          </div>
-
-                          <div className="mt-2">
-                            <span className={["inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold", stagePillClass(stage.key)].join(" ")}>
-                              {stage.label}
-                            </span>
-                          </div>
-
-                          <div className="mt-3 grid grid-cols-2 gap-2">
-                            <button
-                              onClick={() => stampExpo(selectedTable.id, course, "calledAt")}
-                              className="rounded-lg border border-[#E0C6AF] bg-white px-2 py-2 text-xs hover:bg-[#fff7ee] transition"
-                            >
-                              Called
-                            </button>
-                            <button
-                              onClick={() => stampExpo(selectedTable.id, course, "readyAt")}
-                              className="rounded-lg border border-[#E0C6AF] bg-white px-2 py-2 text-xs hover:bg-[#fff7ee] transition"
-                            >
-                              Ready
-                            </button>
-                            <button
-                              onClick={() => stampExpo(selectedTable.id, course, "servedAt")}
-                              className="rounded-lg border border-[#E0C6AF] bg-white px-2 py-2 text-xs hover:bg-[#fff7ee] transition"
-                            >
-                              Served
-                            </button>
-                            <button
-                              onClick={() => stampExpo(selectedTable.id, course, "clearedAt")}
-                              className="rounded-lg border border-[#E0C6AF] bg-white px-2 py-2 text-xs hover:bg-[#fff7ee] transition"
-                            >
-                              Cleared
-                            </button>
-                          </div>
-
-                          <div className="mt-3 text-[11px] text-[#7B5A45] space-y-1">
-                            <div className="flex items-center justify-between">
-                              <span>Called</span>
-                              <span className="font-mono">{times.calledAt ? new Date(times.calledAt).toLocaleTimeString() : "—"}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span>Ready</span>
-                              <span className="font-mono">{times.readyAt ? new Date(times.readyAt).toLocaleTimeString() : "—"}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span>Served</span>
-                              <span className="font-mono">{times.servedAt ? new Date(times.servedAt).toLocaleTimeString() : "—"}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span>Cleared</span>
-                              <span className="font-mono">{times.clearedAt ? new Date(times.clearedAt).toLocaleTimeString() : "—"}</span>
-                            </div>
-                          </div>
+                  {selectedTable.bottles.length ? (
+                    <div className="mt-3 space-y-2">
+                      {selectedTable.bottles.map((b, idx) => (
+                        <div key={`${b}-${idx}`} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2" style={{ borderColor: "#F0E0CF" }}>
+                          <div className="text-sm text-slate-800">{b}</div>
+                          <button
+                            type="button"
+                            onClick={() => removeBottle(idx)}
+                            className="text-xs px-2 py-1 rounded border hover:bg-slate-50"
+                            style={{ borderColor: "#E8D4B8", color: "#6B1F2F" }}
+                          >
+                            Remove
+                          </button>
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-xs text-slate-500">No bottle orders yet.</div>
+                  )}
+                </div>
+
+                {/* BTG */}
+                <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4">
+                  <div>
+                    <div className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                      By the glass
+                    </div>
+                    <div className="text-[11px] text-[#7B5A45] mt-0.5">
+                      Temporary list (next: make this configurable per company)
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex gap-2">
+                    <select
+                      value={selectedBtgToAdd}
+                      onChange={(e) => setSelectedBtgToAdd(e.target.value)}
+                      className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                    >
+                      <option value="">Select BTG…</option>
+                      {BTG_OPTIONS.map((w) => (
+                        <option key={w} value={w}>
+                          {w}
+                        </option>
+                      ))}
+                    </select>
+                    <button type="button" onClick={addBtg} className="rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ backgroundColor: "#6B1F2F" }}>
+                      Add
+                    </button>
+                  </div>
+
+                  {selectedTable.btg.length ? (
+                    <div className="mt-3 space-y-2">
+                      {selectedTable.btg.map((b, idx) => (
+                        <div key={`${b}-${idx}`} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2" style={{ borderColor: "#F0E0CF" }}>
+                          <div className="text-sm text-slate-800">{b}</div>
+                          <button
+                            type="button"
+                            onClick={() => removeBtg(idx)}
+                            className="text-xs px-2 py-1 rounded border hover:bg-slate-50"
+                            style={{ borderColor: "#E8D4B8", color: "#6B1F2F" }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-xs text-slate-500">No BTG orders yet.</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Substitutions (table-wide)</label>
+                  <textarea
+                    value={selectedTable.substitutions}
+                    onChange={(e) => updateSelected({ substitutions: e.target.value })}
+                    rows={3}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Service notes</label>
+                  <textarea
+                    value={selectedTable.notes}
+                    onChange={(e) => updateSelected({ notes: e.target.value })}
+                    rows={3}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                  />
+                </div>
+              </div>
+
+              {/* Doneness */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Protein doneness</label>
+                  <select
+                    value={selectedTable.protein}
+                    onChange={(e) => updateSelected({ protein: e.target.value as ProteinDoneness })}
+                    className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm text-[#3B2620] focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                  >
+                    <option value="n/a">N/A</option>
+                    <option value="rare">Rare</option>
+                    <option value="medium-rare">Medium-rare</option>
+                    <option value="medium">Medium</option>
+                    <option value="medium-well">Medium-well</option>
+                    <option value="well">Well</option>
+                  </select>
+                </div>
+
+                <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4">
+                  <div className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                    Steps included for this table
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {stepsForSelected.map((s) => (
+                      <span key={s.key} className="text-[11px] px-2 py-1 rounded-full border bg-[#FDF8F2] border-[#E8D4B8] text-[#4A1520]">
+                        {s.label}
+                      </span>
+                    ))}
                   </div>
                 </div>
-              </>
-            )}
-          </section>
-        </div>
-      )}
-
-      {/* Confirm clear modal */}
-      {confirmClear.open ? (
-        <Modal
-          title="Clear table & remove reservation?"
-          onCancel={cancelFreeTable}
-          onConfirm={confirmFreeTable}
-          confirmLabel="Yes, clear it"
-        >
-          <p className="text-sm text-slate-700">
-            This will <b>free Table {confirmClear.tableNum}</b> and reset its service steps/timers.
-          </p>
-          <p className="text-sm text-slate-700 mt-2">
-            Use this if the guest did <b>not</b> arrive or you assigned them by mistake.
-          </p>
-        </Modal>
-      ) : null}
-
-      {/* Confirm closeout modal */}
-      {confirmCloseOut.open ? (
-        <Modal
-          title="Close out this table?"
-          onCancel={cancelCloseOut}
-          onConfirm={confirmCloseOutYes}
-          confirmLabel="Yes, close out"
-        >
-          <p className="text-sm text-slate-700">
-            This will mark <b>Table {confirmCloseOut.tableNum}</b> as completed and move it to the bottom list in muted gray.
-          </p>
-        </Modal>
-      ) : null}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-[#7B5A45]">Select a table on the left to view or edit its details.</p>
+          )}
+        </section>
+      </div>
     </MainLayout>
   );
 }
 
-// ---------- small UI components ----------
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function TimeChip({ label, value }: { label: string; value: string }) {
   return (
-    <button
-      onClick={onClick}
-      className={[
-        "rounded-full px-4 py-2 text-sm border transition",
-        active
-          ? "bg-[#6B1F2F] text-white border-[#6B1F2F]"
-          : "bg-white text-[#6B1F2F] border-[#E8D4B8] hover:bg-[#FDF8F2]",
-      ].join(" ")}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Modal({
-  title,
-  children,
-  onCancel,
-  onConfirm,
-  confirmLabel,
-}: {
-  title: string;
-  children: React.ReactNode;
-  onCancel: () => void;
-  onConfirm: () => void;
-  confirmLabel: string;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
-      <div className="relative w-full max-w-lg rounded-2xl bg-white border border-[#E8D4B8] shadow-xl p-5">
-        <div
-          className="text-lg font-semibold text-[#4A1520]"
-          style={{ fontFamily: "Playfair Display, Georgia, serif" }}
-        >
-          {title}
-        </div>
-        <div className="mt-3">{children}</div>
-        <div className="mt-5 flex items-center justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="rounded-lg px-3 py-2 text-sm border border-slate-200 hover:bg-slate-50 transition"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="rounded-lg px-3 py-2 text-sm bg-[#6B1F2F] text-white hover:bg-[#4A1520] transition"
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
+    <div className="rounded-xl border border-[#E8D4B8] bg-[#FDF8F2] px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-[#7B5A45]">{label}</div>
+      <div className="text-sm font-semibold text-[#4A1520]">{value}</div>
     </div>
   );
 }

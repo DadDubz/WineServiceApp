@@ -1,6 +1,7 @@
 // src/layouts/MainLayout.tsx
 import { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
 
 interface MainLayoutProps {
   title: string;
@@ -8,16 +9,20 @@ interface MainLayoutProps {
   children: ReactNode;
 }
 
-const BRAND_BG = "#1B0C10";      // deep wine background
+const BRAND_BG = "#1B0C10"; // deep wine background
 const BRAND_PRIMARY = "#6B1F2F"; // wine red
-const BRAND_ACCENT = "#D4AF88";  // champagne gold
+const BRAND_ACCENT = "#D4AF88"; // champagne gold
 const SURFACE = "#FEFEFE";
 
-export default function MainLayout({
-  title,
-  subtitle,
-  children,
-}: MainLayoutProps) {
+export default function MainLayout({ title, subtitle, children }: MainLayoutProps) {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
+
   return (
     <div className="min-h-screen flex bg-slate-100">
       {/* SIDEBAR */}
@@ -27,16 +32,10 @@ export default function MainLayout({
       >
         {/* Brand */}
         <div className="px-5 py-4 border-b" style={{ borderColor: "#3A1C28" }}>
-          <div
-            className="text-xs tracking-[0.25em] uppercase text-slate-300"
-            style={{ letterSpacing: "0.25em" }}
-          >
+          <div className="text-xs tracking-[0.25em] uppercase text-slate-300" style={{ letterSpacing: "0.25em" }}>
             Wellington
           </div>
-          <div
-            className="mt-1 text-lg font-semibold text-slate-50"
-            style={{ fontFamily: "Playfair Display, Georgia, serif" }}
-          >
+          <div className="mt-1 text-lg font-semibold text-slate-50" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
             Wine Service
           </div>
         </div>
@@ -51,9 +50,14 @@ export default function MainLayout({
         </nav>
 
         {/* Footer / user */}
-        <div className="px-4 py-3 border-t text-xs text-slate-400" style={{ borderColor: "#3A1C28" }}>
+        <div
+          className="px-4 py-3 border-t text-xs text-slate-400"
+          style={{ borderColor: "#3A1C28" }}
+        >
           Signed in as
-          <div className="font-medium text-slate-200">Sommelier / Expo</div>
+          <div className="font-medium text-slate-200">
+            {user ? `${user.username} • ${String(user.role)}` : "—"}
+          </div>
         </div>
       </aside>
 
@@ -64,12 +68,9 @@ export default function MainLayout({
           className="h-14 flex items-center justify-between px-4 md:px-8 border-b bg-white/80 backdrop-blur"
           style={{ borderColor: "#E8D4B8" }}
         >
-          {/* On mobile, simple brand / small menu label */}
+          {/* On mobile brand */}
           <div className="md:hidden">
-            <span
-              className="text-sm font-semibold"
-              style={{ color: BRAND_PRIMARY }}
-            >
+            <span className="text-sm font-semibold" style={{ color: BRAND_PRIMARY }}>
               Wine Service
             </span>
           </div>
@@ -78,32 +79,40 @@ export default function MainLayout({
           <div className="flex flex-col">
             <span
               className="text-sm font-semibold"
-              style={{
-                color: BRAND_PRIMARY,
-                fontFamily: "Playfair Display, Georgia, serif",
-              }}
+              style={{ color: BRAND_PRIMARY, fontFamily: "Playfair Display, Georgia, serif" }}
             >
               {title}
             </span>
-            {subtitle && (
-              <span className="text-xs text-slate-500">{subtitle}</span>
-            )}
+            {subtitle && <span className="text-xs text-slate-500">{subtitle}</span>}
           </div>
 
-          {/* Right side - placeholder for date / shift */}
-          <div className="hidden md:flex items-center gap-3 text-xs text-slate-500">
-            <span className="px-2 py-1 rounded-full border" style={{ borderColor: BRAND_ACCENT }}>
-              Tonight&apos;s Service
-            </span>
+          {/* Right side */}
+          <div className="flex items-center gap-2">
+            {user ? (
+              <span
+                className="hidden md:inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full border"
+                style={{ borderColor: BRAND_ACCENT, color: "#6B1F2F" }}
+                title="Current user"
+              >
+                <span className="font-semibold">{user.username}</span>
+                <span className="opacity-70">•</span>
+                <span className="uppercase tracking-wide">{String(user.role)}</span>
+              </span>
+            ) : null}
+
+            <button
+              onClick={handleLogout}
+              className="rounded-lg px-3 py-2 text-xs font-semibold border transition hover:bg-[#FDF8F2]"
+              style={{ borderColor: BRAND_ACCENT, color: BRAND_PRIMARY }}
+            >
+              Log out
+            </button>
           </div>
         </header>
 
         {/* Page content */}
         <main className="flex-1 p-4 md:p-8">
-          <div
-            className="mx-auto max-w-6xl rounded-2xl shadow-md p-4 md:p-6"
-            style={{ backgroundColor: SURFACE }}
-          >
+          <div className="mx-auto max-w-6xl rounded-2xl shadow-md p-4 md:p-6" style={{ backgroundColor: SURFACE }}>
             {children}
           </div>
         </main>
@@ -118,8 +127,7 @@ interface NavItemProps {
 }
 
 function NavItem({ to, label }: NavItemProps) {
-  const baseClasses =
-    "w-full flex items-center justify-between px-3 py-2 rounded-lg transition text-left";
+  const baseClasses = "w-full flex items-center justify-between px-3 py-2 rounded-lg transition text-left";
   return (
     <NavLink
       to={to}
@@ -127,17 +135,12 @@ function NavItem({ to, label }: NavItemProps) {
       className={({ isActive }) =>
         [
           baseClasses,
-          isActive
-            ? "bg-slate-50 text-slate-900"
-            : "text-slate-200 hover:bg-white/5",
+          isActive ? "bg-slate-50 text-slate-900" : "text-slate-200 hover:bg-white/5",
         ].join(" ")
       }
     >
       <span className="text-sm">{label}</span>
-      <span
-        className="h-2 w-2 rounded-full"
-        style={{ backgroundColor: BRAND_ACCENT }}
-      />
+      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#D4AF88" }} />
     </NavLink>
   );
 }
