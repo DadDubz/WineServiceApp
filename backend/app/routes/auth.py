@@ -8,7 +8,7 @@ from app.db import get_db
 from app.schemas.schemas import TokenResponse, UserCreate, UserOut
 
 router = APIRouter(tags=["Auth"])
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login/")
 
 # -------------------------------
 # Helpers
@@ -59,12 +59,12 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
 
     hashed_password = get_password_hash(user.password)
     new_user = User(
-        username=user.username,
-        email=f"{user.username}@example.com",
-        hashed_password=hashed_password,
-        role="user",            # default role
-        company_id=None         # adjust if you want to require company
-    )
+    username=user.username,
+    email=f"{user.username}@example.com",
+    hashed_password=hashed_password,
+    role="user",
+    company_id=1
+)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)

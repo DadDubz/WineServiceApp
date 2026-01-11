@@ -1,32 +1,49 @@
-from sqlalchemy.orm import Session
+# app/services/inventory.py (or wherever your InventoryService lives)
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from fastapi import HTTPException
 from app.models.inventory import InventoryItem
 from app.schemas.inventory import InventoryCreate, InventoryUpdate
 
-def get_inventory_items(db: Session, company_id: int):
-    return db.query(InventoryItem).filter(InventoryItem.company_id == company_id).all()
+class InventoryService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
 
-def get_inventory_item(db: Session, item_id: int):
-    return db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
+    async def get_all_items(self, company_id: int):
+        result = await self.db.execute(
+            select(InventoryItem).where(InventoryItem.company_id == company_id)
+        )
+        return result.scalars().all()
 
-def create_inventory_item(db: Session, item: InventoryCreate, company_id: int):
-    db_item = InventoryItem(**item.dict(), company_id=company_id)
-    db.add(db_item)
-    db.commit()
-    db.refresh(db_item)
-    return db_item
+    async def get_item_by_id(self, item_id: int, company_id: int):
+        result = await self.db.execute(
+            select(InventoryItem).where(
+                InventoryItem.id == item_id,
+                InventoryItem.company_id == company_id
+            )
+        )
+        item = result.scalar_one_or_none()
+        if item is None:
+            raise HTTPException(status_code=404, detail="Inventory item not found")
+        return item
 
-def update_inventory_item(db: Session, item_id: int, item: InventoryUpdate):
-    db_item = get_inventory_item(db, item_id)
-    if db_item:
-        for key, value in item.dict(exclude_unset=True).items():
-            setattr(db_item, key, value)
-        db.commit()
-        db.refresh(db_item)
-    return db_item
+    async def create_item(self, item: InventoryCreate, company_id: int):
+        new_item = InventoryItem(**item.model_dump(), company_id=company_id)
+        self.db.add(new_item)
+        await self.db.commit()
+        await self.db.refresh(new_item)
+        return new_item
 
-def delete_inventory_item(db: Session, item_id: int):
-    db_item = get_inventory_item(db, item_id)
-    if db_item:
-        db.delete(db_item)
-        db.commit()
-    return db_item
+    async def update_item(self, item_id: int, item_update: InventoryUpdate, company_id: int):
+        item = await self.get_item_by_id(item_id, company_id)
+        for field, value in item_update.model_dump(exclude_unset=True).items():
+            setattr(item, field, value)
+        await self.db.commit()
+        await self.db.refresh(item)
+        return item
+
+    async def delete_item(self, item_id: int, company_id: int):
+        item = await self.get_item_by_id(item_id, company_id)
+        await self.db.delete(item)
+        await self.db.commit()
+        return {"detail": "Item deleted successfully"}

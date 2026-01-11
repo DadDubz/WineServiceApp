@@ -11,7 +11,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     role = Column(String, nullable=False)
 
-    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
 
     # relationships
     company = relationship("Company", back_populates="users")

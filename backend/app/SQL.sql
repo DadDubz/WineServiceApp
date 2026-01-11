@@ -1,0 +1,2 @@
+ALTER TABLE inventory_items
+ADD COLUMN is_btg BOOLEAN NOT NULL DEFAULT 0;
