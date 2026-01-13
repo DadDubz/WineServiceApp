@@ -1,159 +1,249 @@
 // src/pages/InventoryPage.tsx
-import { useEffect, useMemo, useState } from "react";
-import MainLayout from "@/layouts/MainLayout";
-
-type InventoryItem = {
-  id: number;
-  name: string;
-  quantity: number;
-  par_level: number;
-  is_btg: boolean;
-};
-
-const API_BASE = "http://localhost:8000/api";
+import React, { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { getWines, addWine, updateWine, Wine } from "@/api/wines";
 
 export default function InventoryPage() {
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
-  const fetchItems = async () => {
-    setLoading(true);
-    setErr(null);
-    try {
-      const res = await fetch(`${API_BASE}/inventory/`, {
-        headers: {
-          // Authorization: `Bearer ${localStorage.getItem("authToken")}`,
-        },
-      });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
-      setItems(await res.json());
-    } catch (e: any) {
-      setErr(e?.message || "Failed to load inventory");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { user } = useAuth();
+  const [wines, setWines] = useState<Wine[]>([]);
+  const [newWine, setNewWine] = useState<Partial<Wine>>({});
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editFields, setEditFields] = useState<Partial<Wine>>({});
 
   useEffect(() => {
-    fetchItems();
+    fetchWines();
   }, []);
 
-  const btgCount = useMemo(() => items.filter((x) => x.is_btg).length, [items]);
+  const fetchWines = async () => {
+    const res = await getWines();
+    setWines(res.data);
+  };
 
-  const toggleBTG = async (item: InventoryItem) => {
-    // enforce "max 5" BTG
-    if (!item.is_btg && btgCount >= 5) {
-      alert("BTG list is full (max 5). Uncheck one first.");
-      return;
-    }
-
-    const next = !item.is_btg;
-
-    // optimistic UI
-    setItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, is_btg: next } : x)));
-
+  const handleAddWine = async () => {
+    const { name, vintage, region, quantity, is_btg } = newWine;
+    if (!name || !vintage || !region) return;
     try {
-      const res = await fetch(`${API_BASE}/inventory/${item.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          // Authorization: `Bearer ${localStorage.getItem("authToken")}`,
-        },
-        body: JSON.stringify({ is_btg: next }),
+      await addWine({
+        name,
+        vintage,
+        region,
+        quantity: quantity ?? 0,
+        is_btg: is_btg ?? false,
       });
-
-      if (!res.ok) throw new Error(`Update failed (${res.status})`);
-    } catch (e: any) {
-      alert(e?.message || "Failed to update BTG");
-      // revert
-      setItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, is_btg: item.is_btg } : x)));
+      setNewWine({});
+      fetchWines();
+    } catch (err) {
+      console.error("Error adding wine:", err);
     }
   };
 
-  const lowStock = useMemo(() => {
-    return items
-      .filter((x) => x.quantity <= Math.max(0, x.par_level))
-      .sort((a, b) => (a.quantity - a.par_level) - (b.quantity - b.par_level))
-      .slice(0, 10);
-  }, [items]);
+  const startEdit = (wine: Wine) => {
+    setEditingId(wine.id);
+    setEditFields({ ...wine });
+  };
+
+  const handleUpdateWine = async (id: number) => {
+    try {
+      await updateWine(id, editFields);
+      setEditingId(null);
+      fetchWines();
+    } catch (err) {
+      console.error("Error updating wine:", err);
+    }
+  };
 
   return (
-    <MainLayout title="Wine Inventory" subtitle="Manage counts, par levels, and BTG lineup">
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-6">
-        <div className="rounded-2xl border border-[#E8D4B8] bg-white/90 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#E8D4B8] flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
-                Inventory
-              </h2>
-              <p className="text-[11px] text-[#7B5A45] mt-0.5">Mark exactly 5 wines as By-the-Glass</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-[#7B5A45]">BTG: {btgCount}/5</span>
-              <button
-                onClick={fetchItems}
-                className="rounded-lg px-3 py-2 text-sm border border-[#E8D4B8] bg-white hover:bg-[#FDF8F2] transition"
-                style={{ color: "#6B1F2F" }}
-              >
-                Refresh
-              </button>
-            </div>
-          </div>
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">Wine Inventory</h1>
 
-          {err ? (
-            <div className="p-4 text-sm text-red-700 bg-red-50 border-b border-red-200">
-              {err}
-            </div>
-          ) : null}
-
-          <div className="divide-y divide-[#F0E0CF]">
-            {loading ? (
-              <div className="p-4 text-sm text-[#7B5A45]">Loading…</div>
-            ) : items.length === 0 ? (
-              <div className="p-4 text-sm text-[#7B5A45]">No inventory items yet.</div>
-            ) : (
-              items.map((it) => (
-                <div key={it.id} className="px-4 py-3 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-slate-800 truncate">{it.name}</div>
-                    <div className="text-xs text-[#7B5A45] mt-0.5">
-                      Qty: {it.quantity} • Par: {it.par_level}
+      {/* Wine list table */}
+      <table className="min-w-full border-collapse">
+        <thead>
+          <tr className="bg-gray-200">
+            <th className="p-2 border">Name</th>
+            <th className="p-2 border">Vintage</th>
+            <th className="p-2 border">Region</th>
+            <th className="p-2 border">Qty</th>
+            <th className="p-2 border">BTG?</th>
+            {user?.role !== "server" && <th className="p-2 border">Actions</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {wines.map((wine) => (
+            <tr key={wine.id} className="odd:bg-white even:bg-gray-50">
+              <td className="p-2 border">
+                {editingId === wine.id ? (
+                  <input
+                    type="text"
+                    value={editFields.name ?? ""}
+                    onChange={(e) =>
+                      setEditFields({ ...editFields, name: e.target.value })
+                    }
+                    className="border p-1 w-full"
+                  />
+                ) : (
+                  wine.name
+                )}
+              </td>
+              <td className="p-2 border">
+                {editingId === wine.id ? (
+                  <input
+                    type="number"
+                    value={editFields.vintage ?? 0}
+                    onChange={(e) =>
+                      setEditFields({
+                        ...editFields,
+                        vintage: Number(e.target.value),
+                      })
+                    }
+                    className="border p-1 w-full"
+                  />
+                ) : (
+                  wine.vintage
+                )}
+              </td>
+              <td className="p-2 border">
+                {editingId === wine.id ? (
+                  <input
+                    type="text"
+                    value={editFields.region ?? ""}
+                    onChange={(e) =>
+                      setEditFields({ ...editFields, region: e.target.value })
+                    }
+                    className="border p-1 w-full"
+                  />
+                ) : (
+                  wine.region
+                )}
+              </td>
+              <td className="p-2 border">
+                {editingId === wine.id ? (
+                  <input
+                    type="number"
+                    value={editFields.quantity ?? 0}
+                    onChange={(e) =>
+                      setEditFields({
+                        ...editFields,
+                        quantity: Number(e.target.value),
+                      })
+                    }
+                    className="border p-1 w-full"
+                  />
+                ) : (
+                  wine.quantity
+                )}
+              </td>
+              <td className="p-2 border text-center">
+                {editingId === wine.id ? (
+                  <input
+                    type="checkbox"
+                    checked={editFields.is_btg ?? false}
+                    onChange={(e) =>
+                      setEditFields({
+                        ...editFields,
+                        is_btg: e.target.checked,
+                      })
+                    }
+                  />
+                ) : wine.is_btg ? (
+                  "Yes"
+                ) : (
+                  "No"
+                )}
+              </td>
+              {user?.role !== "server" && (
+                <td className="p-2 border text-center">
+                  {editingId === wine.id ? (
+                    <div className="flex gap-2 justify-center">
+                      <button
+                        onClick={() => handleUpdateWine(wine.id)}
+                        className="bg-green-500 text-white px-2 py-1 rounded"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="bg-gray-400 text-white px-2 py-1 rounded"
+                      >
+                        Cancel
+                      </button>
                     </div>
-                  </div>
+                  ) : (
+                    <button
+                      onClick={() => startEdit(wine)}
+                      className="text-blue-600"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={it.is_btg} onChange={() => toggleBTG(it)} />
-                    BTG
-                  </label>
-                </div>
-              ))
-            )}
+      {/* Add new wine form for manager/sommelier (not server) */}
+      {user?.role !== "server" && (
+        <div className="mt-6">
+          <h2 className="text-lg font-semibold mb-2">Add New Wine</h2>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            <input
+              type="text"
+              placeholder="Name"
+              value={newWine.name ?? ""}
+              onChange={(e) => setNewWine({ ...newWine, name: e.target.value })}
+              className="border p-2 rounded"
+            />
+            <input
+              type="number"
+              placeholder="Vintage"
+              value={newWine.vintage ?? ""}
+              onChange={(e) =>
+                setNewWine({ ...newWine, vintage: Number(e.target.value) })
+              }
+              className="border p-2 rounded"
+            />
+            <input
+              type="text"
+              placeholder="Region"
+              value={newWine.region ?? ""}
+              onChange={(e) =>
+                setNewWine({ ...newWine, region: e.target.value })
+              }
+              className="border p-2 rounded"
+            />
+            <input
+              type="number"
+              placeholder="Quantity"
+              value={newWine.quantity ?? ""}
+              onChange={(e) =>
+                setNewWine({
+                  ...newWine,
+                  quantity: Number(e.target.value),
+                })
+              }
+              className="border p-2 rounded"
+            />
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={newWine.is_btg ?? false}
+                onChange={(e) =>
+                  setNewWine({ ...newWine, is_btg: e.target.checked })
+                }
+              />
+              <span>By The Glass</span>
+            </label>
           </div>
+          <button
+            onClick={handleAddWine}
+            className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
+          >
+            Add Wine
+          </button>
         </div>
-
-        <div className="rounded-2xl border border-[#E8D4B8] bg-white/90 shadow-sm p-4">
-          <h2 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
-            Low Stock (par or below)
-          </h2>
-          <p className="text-[11px] text-[#7B5A45] mt-0.5">Quick view (used on Dashboard next)</p>
-
-          <div className="mt-3 space-y-2">
-            {loading ? (
-              <div className="text-sm text-[#7B5A45]">Loading…</div>
-            ) : lowStock.length === 0 ? (
-              <div className="text-sm text-[#7B5A45]">No low stock items 🎉</div>
-            ) : (
-              lowStock.map((x) => (
-                <div key={x.id} className="rounded-lg border px-3 py-2" style={{ borderColor: "#E8D4B8" }}>
-                  <div className="text-sm font-medium text-slate-800">{x.name}</div>
-                  <div className="text-xs text-[#7B5A45]">Qty {x.quantity} • Par {x.par_level}</div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-    </MainLayout>
+      )}
+    </div>
   );
 }
