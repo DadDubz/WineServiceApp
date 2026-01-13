@@ -10,9 +10,11 @@
     "skipLibCheck": true,
     "strict": true,
     "forceConsistentCasingInFileNames": true,
-    "baseUrl": "./src",
+
+    // Updated values for alias resolution:
+    "baseUrl": ".",             // changed from "./src"
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["src/*"]          // changed from "./*"
     }
   },
   "include": ["src", "index.ts"]
