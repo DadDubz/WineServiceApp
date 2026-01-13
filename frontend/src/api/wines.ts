@@ -1,7 +1,7 @@
 // src/api/wines.ts
 import axios from "axios";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
 
 // IMPORTANT: this matches your AuthContext token key
 const TOKEN_KEY = "authToken";
@@ -11,7 +11,7 @@ function getToken() {
 }
 
 const api = axios.create({
-  baseURL: BASE_URL,
+  baseURL: API_BASE_URL,
 });
 
 api.interceptors.request.use((config) => {
@@ -27,27 +27,27 @@ api.interceptors.request.use((config) => {
 export interface Wine {
   id: number;
   name: string;
-  vintage?: number | null;
-  region?: string | null;
-  quantity?: number | null;
-  is_btg?: boolean | null;
+  vintage: number;
+  region: string;
+  quantity: number;
+  is_btg: boolean;
 }
 
 export type WineCreate = Omit<Wine, "id">;
-export type WineUpdate = Partial<WineCreate>;
+export type WineUpdate = Partial<Omit<Wine, "id">>;
 
-// If your backend endpoint differs, change ONLY these paths:
+// Endpoints (baseURL already includes /api)
 export async function getWines(): Promise<Wine[]> {
-  const res = await api.get<Wine[]>("/api/wines");
+  const res = await api.get<Wine[]>("/wines");
   return res.data;
 }
 
 export async function addWine(data: WineCreate): Promise<Wine> {
-  const res = await api.post<Wine>("/api/wines", data);
+  const res = await api.post<Wine>("/wines", data);
   return res.data;
 }
 
 export async function updateWine(id: number, data: WineUpdate): Promise<Wine> {
-  const res = await api.put<Wine>(`/api/wines/${id}`, data);
+  const res = await api.put<Wine>(`/wines/${id}`, data);
   return res.data;
 }

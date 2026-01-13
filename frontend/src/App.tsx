@@ -6,15 +6,22 @@ import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
 import InventoryPage from "@/pages/InventoryPage";
 import ServicePage from "@/pages/ServicePage";
-
-// ✅ CHANGE THESE IMPORTS TO MATCH YOUR FILE NAMES:
 import GuestManagementPage from "@/pages/GuestManagementPage";
 import ReportsPage from "@/pages/ReportsPage";
 
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 function AppRoutes() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
+
+  // Optional: prevents route flicker on refresh while /auth/me is loading
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F8F5F0]">
+        <p className="text-sm text-gray-600">Loading…</p>
+      </div>
+    );
+  }
 
   return (
     <Routes>
@@ -52,9 +59,8 @@ function AppRoutes() {
         }
       />
 
-      {/* ✅ ADD THESE ROUTES */}
       <Route
-        path="/guests-ui"
+        path="/guests"
         element={
           <ProtectedRoute>
             <GuestManagementPage />
@@ -63,7 +69,7 @@ function AppRoutes() {
       />
 
       <Route
-        path="/reports-ui"
+        path="/reports"
         element={
           <ProtectedRoute>
             <ReportsPage />
@@ -71,18 +77,8 @@ function AppRoutes() {
         }
       />
 
-      {/* Optional: placeholder routes so nav doesn't break */}
-      <Route
-        path="/homepage"
-        element={
-          <ProtectedRoute>
-            <Navigate to="/" replace />
-          </ProtectedRoute>
-        }
-      />
-
       {/* Catch-all */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
     </Routes>
   );
 }
