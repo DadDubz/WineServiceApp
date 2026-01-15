@@ -45,8 +45,8 @@ export default function MainLayout({ title, subtitle, children }: MainLayoutProp
           <NavItem to="/" label="Dashboard" />
           <NavItem to="/service" label="Dinner Service" />
           <NavItem to="/inventory" label="Wine Inventory" />
-          <NavItem to="/guests-ui" label="Guests" />
-          <NavItem to="/reports-ui" label="Reports" />
+          <NavItem to="/guests" label="Guests" />
+          <NavItem to="/reports" label="Reports" />
         </nav>
 
         {/* Footer / user */}

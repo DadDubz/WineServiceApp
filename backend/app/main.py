@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from app.routes.service import router as service_router
 import os
 from pathlib import Path
 
@@ -34,6 +35,7 @@ app.include_router(wines_router, prefix="/api")
 app.include_router(tables_router, prefix="/api")
 app.include_router(guests_router, prefix="/api")
 app.include_router(orders_router, prefix="/api")
+app.include_router(service_router, prefix="/api")
 
 
 # Health check

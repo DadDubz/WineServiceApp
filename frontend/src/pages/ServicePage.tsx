@@ -1,8 +1,17 @@
 // src/pages/ServicePage.tsx
 import { useEffect, useMemo, useState } from "react";
 import MainLayout from "@/layouts/MainLayout";
+import { useAuth } from "@/context/AuthContext";
+import { can } from "@/auth/permissions";
 
-type ProteinDoneness = "rare" | "medium-rare" | "medium" | "medium-well" | "well" | "n/a";
+type ProteinDoneness =
+  | "rare"
+  | "medium-rare"
+  | "medium"
+  | "medium-well"
+  | "well"
+  | "n/a";
+
 type ProteinSub = "" | "chicken" | "fish";
 type CoffeeTeaChoice = "" | "coffee" | "decaf" | "nespresso" | "tea" | "port";
 
@@ -36,9 +45,11 @@ type StepTiming = {
 type ServiceFlow = {
   stepIndex: number;
   status: StepStatus; // status of CURRENT step
-  // log of actions for undo + review
-  history: { stepIndex: number; status: StepStatus; timingsSnapshot: Record<string, StepTiming> }[];
-  // timings by stepKey
+  history: {
+    stepIndex: number;
+    status: StepStatus;
+    timingsSnapshot: Record<string, StepTiming>;
+  }[];
   timings: Record<string, StepTiming>;
 };
 
@@ -85,10 +96,10 @@ interface ServiceTable {
   substitutions: string;
   protein: ProteinDoneness;
 
-  // New: service flow
   service: ServiceFlow;
 
-  // New: seated order (for list ordering)
+  // ✅ NEW: arrival/seating
+  arrivedAt?: number;
   seatedAt?: number;
 
   // New: table complete
@@ -98,7 +109,7 @@ interface ServiceTable {
 type InventoryItemAny = Record<string, any>;
 
 const API_BASE = "http://localhost:8000/api";
-const COMPANY_ID = 1; // TEMP: for preview. Later: derive from auth user/company.
+const COMPANY_ID = 1; // TEMP: derive from auth later
 
 const BTG_OPTIONS = [
   "NV Grower Champagne",
@@ -121,7 +132,6 @@ function buildGuests(count: number): GuestEntry[] {
   }));
 }
 
-// Best-effort mapping from your InventoryOut -> name field
 function getWineName(item: InventoryItemAny) {
   return (
     item.wine_name ||
@@ -135,7 +145,6 @@ function getWineName(item: InventoryItemAny) {
 }
 
 function cloneTimings(t: Record<string, StepTiming>) {
-  // deep-ish clone so undo snapshots don’t mutate
   const out: Record<string, StepTiming> = {};
   Object.entries(t).forEach(([k, v]) => {
     out[k] = { ...v };
@@ -152,7 +161,6 @@ function baseSteps(table: ServiceTable): { key: StepKey; label: string }[] {
     { key: "entree", label: "Entree" },
   ];
 
-  // Coffee/Tea step is optional but sits between entree and dessert when enabled
   if (table.coffeeTea.enabled) {
     steps.push({ key: "coffee_tea", label: "Coffee/Tea" });
   }
@@ -160,7 +168,6 @@ function baseSteps(table: ServiceTable): { key: StepKey; label: string }[] {
   steps.push({ key: "dessert", label: "Dessert" });
   steps.push({ key: "goodbye", label: "Goodbye Treat" });
 
-  // Insert cheese board if enabled
   if (table.addOns.cheeseBoard) {
     const cheeseStep = { key: "cheese_board" as StepKey, label: "Cheese Board" };
 
@@ -175,9 +182,7 @@ function baseSteps(table: ServiceTable): { key: StepKey; label: string }[] {
     };
 
     const afterKey = insertAfterKeyMap[table.cheesePlacement];
-
     const idx = steps.findIndex((s) => s.key === afterKey);
-    // if not found (coffee_tea disabled but placement is after_coffee_tea), fallback to after_entree
     const safeIdx = idx >= 0 ? idx : steps.findIndex((s) => s.key === "entree");
     steps.splice(safeIdx + 1, 0, cheeseStep);
   }
@@ -193,7 +198,6 @@ function statusLabel(s: StepStatus) {
 }
 
 function statusColor(s: StepStatus) {
-  // classes chosen to pop but stay brand-friendly
   if (s === "called") return "bg-[#FFF8E3] text-[#8B5A12] border-[#F0E0CF]";
   if (s === "ready") return "bg-[#EEF2FF] text-[#1E3A8A] border-[#E8D4B8]";
   if (s === "served") return "bg-[#ECFDF5] text-[#166534] border-[#D4AF88]";
@@ -243,7 +247,8 @@ const initialTables: ServiceTable[] = [
     substitutions: "",
     protein: "medium-rare",
     service: makeServiceFlow(),
-    seatedAt: now(),
+    arrivedAt: undefined,
+    seatedAt: undefined,
   },
   {
     id: 2,
@@ -262,13 +267,27 @@ const initialTables: ServiceTable[] = [
     substitutions: "",
     protein: "medium",
     service: makeServiceFlow(),
-    seatedAt: now() + 1000,
+    arrivedAt: undefined,
+    seatedAt: undefined,
   },
 ];
 
 export default function ServicePage() {
+  const { user } = useAuth();
+  const role = user?.role ?? "server";
+
+  // ✅ permissions
+  const canArrive = can(role, "tables.arrive");
+  const canSeat = can(role, "tables.seat");
+  const canAdvance = can(role, "service.advance_step");
+  const canUndo = can(role, "service.undo");
+  const canAddWines = can(role, "wines.add_to_table");
+  const canRemoveWines = can(role, "wines.remove_from_table");
+
   const [tables, setTables] = useState<ServiceTable[]>(initialTables);
-  const [selectedId, setSelectedId] = useState<number | null>(initialTables[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<number | null>(
+    initialTables[0]?.id ?? null
+  );
 
   const [inventoryWines, setInventoryWines] = useState<string[]>([]);
   const [invLoading, setInvLoading] = useState(false);
@@ -278,6 +297,10 @@ export default function ServicePage() {
   const [selectedBtgToAdd, setSelectedBtgToAdd] = useState("");
 
   const selectedTable = tables.find((t) => t.id === selectedId) ?? null;
+
+  // ✅ wines locked until Arrived
+  const wineLockedUntilArrived = selectedTable ? !selectedTable.arrivedAt : true;
+  const winesDisabled = !canAddWines || wineLockedUntilArrived;
 
   useEffect(() => {
     const fetchInventory = async () => {
@@ -332,11 +355,15 @@ export default function ServicePage() {
   const stepsForSelected = useMemo(() => {
     if (!selectedTable) return [];
     return baseSteps(selectedTable);
-  }, [selectedTable?.addOns.cheeseBoard, selectedTable?.cheesePlacement, selectedTable?.coffeeTea.enabled]);
+  }, [
+    selectedTable?.addOns.cheeseBoard,
+    selectedTable?.cheesePlacement,
+    selectedTable?.coffeeTea.enabled,
+  ]);
 
-  // SERVICE: one click advance (called -> ready -> served -> cleared -> next step)
   const advanceService = () => {
     if (!selectedTable) return;
+    if (!canAdvance) return;
 
     updateTable(selectedTable.id, (t) => {
       const steps = baseSteps(t);
@@ -345,7 +372,6 @@ export default function ServicePage() {
       const currentStep = steps[t.service.stepIndex];
       if (!currentStep) return t;
 
-      // snapshot for undo
       const snapshot = {
         stepIndex: t.service.stepIndex,
         status: t.service.status,
@@ -358,11 +384,9 @@ export default function ServicePage() {
         timings: { ...t.service.timings },
       };
 
-      const key = currentStep.key;
-      const timingKey = String(key);
+      const timingKey = String(currentStep.key);
       const currentTiming = nextService.timings[timingKey] || {};
 
-      // mark timestamp for the NEW status we are moving INTO
       const setTimingFor = (status: StepStatus) => {
         const ts = now();
         if (status === "called") currentTiming.calledAt = currentTiming.calledAt ?? ts;
@@ -382,32 +406,23 @@ export default function ServicePage() {
         nextService.status = "cleared";
         setTimingFor("cleared");
       } else {
-        // cleared -> move to next step
         if (nextService.stepIndex < maxIndex) {
-          nextService.stepIndex = nextService.stepIndex + 1;
+          nextService.stepIndex += 1;
           nextService.status = "called";
+
           const nextKey = String(steps[nextService.stepIndex].key);
           const nextTiming = nextService.timings[nextKey] || {};
           nextTiming.calledAt = nextTiming.calledAt ?? now();
           nextService.timings[nextKey] = { ...nextTiming };
         } else {
-          // last step cleared -> mark completed
-          return {
-            ...t,
-            completedAt: t.completedAt ?? now(),
-            service: nextService,
-          };
+          return { ...t, completedAt: t.completedAt ?? now(), service: nextService };
         }
       }
 
-      // Ensure calledAt exists for current step when it first becomes active
-      const ensureCalledAt = () => {
-        const activeKey = String(steps[nextService.stepIndex].key);
-        const activeTiming = nextService.timings[activeKey] || {};
-        activeTiming.calledAt = activeTiming.calledAt ?? now();
-        nextService.timings[activeKey] = { ...activeTiming };
-      };
-      ensureCalledAt();
+      const activeKey = String(steps[nextService.stepIndex].key);
+      const activeTiming = nextService.timings[activeKey] || {};
+      activeTiming.calledAt = activeTiming.calledAt ?? now();
+      nextService.timings[activeKey] = { ...activeTiming };
 
       return { ...t, service: nextService };
     });
@@ -415,6 +430,7 @@ export default function ServicePage() {
 
   const undoService = () => {
     if (!selectedTable) return;
+    if (!canUndo) return;
 
     updateTable(selectedTable.id, (t) => {
       const history = t.service.history;
@@ -423,7 +439,7 @@ export default function ServicePage() {
       const last = history[history.length - 1];
       return {
         ...t,
-        completedAt: undefined, // if you undo completion, remove completed state
+        completedAt: undefined,
         service: {
           ...t.service,
           stepIndex: last.stepIndex,
@@ -450,12 +466,16 @@ export default function ServicePage() {
 
   const updateGuest = (guestId: string, patch: Partial<GuestEntry>) => {
     if (!selectedTable) return;
-    const nextGuests = selectedTable.guests.map((g) => (g.id === guestId ? { ...g, ...patch } : g));
+    const nextGuests = selectedTable.guests.map((g) =>
+      g.id === guestId ? { ...g, ...patch } : g
+    );
     updateSelected({ guests: nextGuests });
   };
 
   const addBottle = () => {
     if (!selectedTable) return;
+    if (winesDisabled) return;
+
     const wine = selectedBottleToAdd.trim();
     if (!wine) return;
     updateSelected({ bottles: [...selectedTable.bottles, wine] });
@@ -464,6 +484,8 @@ export default function ServicePage() {
 
   const removeBottle = (idx: number) => {
     if (!selectedTable) return;
+    if (!canRemoveWines) return;
+
     const next = selectedTable.bottles.slice();
     next.splice(idx, 1);
     updateSelected({ bottles: next });
@@ -471,6 +493,8 @@ export default function ServicePage() {
 
   const addBtg = () => {
     if (!selectedTable) return;
+    if (winesDisabled) return;
+
     const wine = selectedBtgToAdd.trim();
     if (!wine) return;
     updateSelected({ btg: [...selectedTable.btg, wine] });
@@ -479,6 +503,8 @@ export default function ServicePage() {
 
   const removeBtg = (idx: number) => {
     if (!selectedTable) return;
+    if (!canRemoveWines) return;
+
     const next = selectedTable.btg.slice();
     next.splice(idx, 1);
     updateSelected({ btg: next });
@@ -495,7 +521,9 @@ export default function ServicePage() {
       const hasAllergy = allergyLines.length > 0;
       const allergyPreview = hasAllergy ? allergyLines[0].slice(0, 18) : "";
 
-      const hasSub = (t.guests || []).some((g) => g.proteinSub === "chicken" || g.proteinSub === "fish");
+      const hasSub = (t.guests || []).some(
+        (g) => g.proteinSub === "chicken" || g.proteinSub === "fish"
+      );
 
       map.set(t.id, { hasAllergy, allergyPreview, hasSub });
     });
@@ -503,16 +531,19 @@ export default function ServicePage() {
     return map;
   }, [tables]);
 
-  // Ordering: active (not completed) first by seatedAt asc; completed muted at bottom
   const orderedTables = useMemo(() => {
+    const sortKey = (t: ServiceTable) => t.seatedAt ?? t.arrivedAt ?? 0;
+
     const active = tables
       .filter((t) => !t.completedAt)
       .slice()
-      .sort((a, b) => (a.seatedAt ?? 0) - (b.seatedAt ?? 0));
+      .sort((a, b) => sortKey(a) - sortKey(b));
+
     const done = tables
       .filter((t) => !!t.completedAt)
       .slice()
-      .sort((a, b) => (a.seatedAt ?? 0) - (b.seatedAt ?? 0));
+      .sort((a, b) => sortKey(a) - sortKey(b));
+
     return [...active, ...done];
   }, [tables]);
 
@@ -530,26 +561,24 @@ export default function ServicePage() {
   const entreeTiming = useMemo(() => {
     if (!selectedTable) return null;
     const t = selectedTable.service.timings["entree"] || {};
-    return {
-      called: t.calledAt,
-      ready: t.readyAt,
-      served: t.servedAt,
-      cleared: t.clearedAt,
-    };
+    return { called: t.calledAt, ready: t.readyAt, served: t.servedAt, cleared: t.clearedAt };
   }, [selectedTable]);
 
   return (
-    <MainLayout title="Dinner Service" subtitle="One-click service flow + wines + guest notes">
+    <MainLayout title="Dinner Service" subtitle="Role permissions + arrival gate + one-click flow">
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)]">
         {/* Tables list */}
         <aside className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-[#E8D4B8] flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+              <h2
+                className="text-sm font-semibold text-[#4A1520]"
+                style={{ fontFamily: "Playfair Display, Georgia, serif" }}
+              >
                 Tonight&apos;s Tables
               </h2>
               <p className="text-[11px] text-[#7B5A45] mt-0.5">
-                Shows current step + status. Completed tables move to bottom.
+                Completed tables move to bottom. Wines unlock after Arrived.
               </p>
             </div>
             <span className="text-[11px] text-[#7B5A45]">{tables.length} total</span>
@@ -585,13 +614,14 @@ export default function ServicePage() {
                       <div className="text-sm font-semibold">
                         {table.tableNumber}{" "}
                         <span className={isActive ? "opacity-90" : "text-[#7B5A45]"}>
-                          • {table.roomNumber || "No room"} {table.reservationTime ? `• ${table.reservationTime}` : ""}
+                          • {table.roomNumber || "No room"}{" "}
+                          {table.reservationTime ? `• ${table.reservationTime}` : ""}
                         </span>
                       </div>
 
                       <div className={isActive ? "text-[11px] opacity-90" : "text-[11px] text-[#7B5A45]"}>
-                        Party: <span className="font-semibold">{table.partyLabel || "—"}</span> • {table.guestsCount}{" "}
-                        {table.guestsCount === 1 ? "guest" : "guests"}
+                        Party: <span className="font-semibold">{table.partyLabel || "—"}</span> •{" "}
+                        {table.guestsCount} {table.guestsCount === 1 ? "guest" : "guests"}
                       </div>
 
                       <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -604,11 +634,51 @@ export default function ServicePage() {
                           {stepLabel}: {stLabel}
                         </span>
 
+                        {/* Arrival badges */}
+                        {table.arrivedAt ? (
+                          <span
+                            className={[
+                              "text-[10px] px-2 py-0.5 rounded-full font-semibold border",
+                              isActive
+                                ? "bg-white/15 text-white border-white/20"
+                                : "bg-[#FDF8F2] text-[#6B1F2F] border-[#E8D4B8]",
+                            ].join(" ")}
+                          >
+                            ✅ Arrived
+                          </span>
+                        ) : (
+                          <span
+                            className={[
+                              "text-[10px] px-2 py-0.5 rounded-full font-semibold border",
+                              isActive
+                                ? "bg-white/10 text-white/90 border-white/15"
+                                : "bg-slate-50 text-slate-600 border-slate-200",
+                            ].join(" ")}
+                          >
+                            ⏳ Not arrived
+                          </span>
+                        )}
+
+                        {table.seatedAt ? (
+                          <span
+                            className={[
+                              "text-[10px] px-2 py-0.5 rounded-full font-semibold border",
+                              isActive
+                                ? "bg-white/15 text-white border-white/20"
+                                : "bg-[#FDF8F2] text-[#6B1F2F] border-[#E8D4B8]",
+                            ].join(" ")}
+                          >
+                            🪑 Seated
+                          </span>
+                        ) : null}
+
                         {badges?.hasAllergy && (
                           <span
                             className={[
                               "text-[10px] px-2 py-0.5 rounded-full font-semibold border",
-                              isActive ? "bg-[#FDE4E2] text-[#8E2525] border-[#F0E0CF]" : "bg-[#FDEBE8] text-[#8E2525] border-[#F0E0CF]",
+                              isActive
+                                ? "bg-[#FDE4E2] text-[#8E2525] border-[#F0E0CF]"
+                                : "bg-[#FDEBE8] text-[#8E2525] border-[#F0E0CF]",
                             ].join(" ")}
                             title={badges.allergyPreview}
                           >
@@ -617,12 +687,7 @@ export default function ServicePage() {
                         )}
 
                         {badges?.hasSub && (
-                          <span
-                            className={[
-                              "text-[10px] px-2 py-0.5 rounded-full font-semibold border",
-                              isActive ? "bg-[#EEF2FF] text-[#1E3A8A] border-[#E8D4B8]" : "bg-[#EEF2FF] text-[#1E3A8A] border-[#E8D4B8]",
-                            ].join(" ")}
-                          >
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold border bg-[#EEF2FF] text-[#1E3A8A] border-[#E8D4B8]">
                             Protein Sub
                           </span>
                         )}
@@ -632,7 +697,9 @@ export default function ServicePage() {
                     {isDone ? (
                       <span className="text-[11px] text-slate-500">Completed</span>
                     ) : (
-                      <span className="text-[11px] text-[#7B5A45]">{table.service.history.length ? "Live" : "New"}</span>
+                      <span className="text-[11px] text-[#7B5A45]">
+                        {table.service.history.length ? "Live" : "New"}
+                      </span>
                     )}
                   </div>
                 </button>
@@ -645,6 +712,42 @@ export default function ServicePage() {
         <section className="rounded-2xl bg-white/90 border border-[#E8D4B8] shadow-sm p-5">
           {selectedTable ? (
             <>
+              {/* ✅ Arrival / Seating controls */}
+              <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4 mb-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
+                      Arrival / Seating
+                    </div>
+                    <div className="text-[11px] text-[#7B5A45] mt-0.5">
+                      Servers can mark Arrived + Seated. Wines unlock after Arrived.
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={!canArrive || !!selectedTable.arrivedAt}
+                      onClick={() => updateSelected({ arrivedAt: Date.now() })}
+                      className="rounded-lg px-3 py-2 text-sm border border-[#E8D4B8] bg-white hover:bg-[#FDF8F2] disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ color: "#6B1F2F" }}
+                    >
+                      {selectedTable.arrivedAt ? `Arrived (${fmtTime(selectedTable.arrivedAt)})` : "Mark Arrived"}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!canSeat || !selectedTable.arrivedAt || !!selectedTable.seatedAt}
+                      onClick={() => updateSelected({ seatedAt: Date.now() })}
+                      className="rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: "#6B1F2F" }}
+                    >
+                      {selectedTable.seatedAt ? `Seated (${fmtTime(selectedTable.seatedAt)})` : "Mark Seated"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {/* Top controls: one-click + undo */}
               <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4 mb-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -655,6 +758,7 @@ export default function ServicePage() {
                     <div className="text-[11px] text-[#7B5A45] mt-0.5">
                       Advances status + step automatically. Undo reverses the last click.
                     </div>
+
                     {selectedStep ? (
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <span className={`text-[12px] px-2.5 py-1 rounded-full border font-semibold ${statusColor(selectedTable.service.status)}`}>
@@ -672,9 +776,10 @@ export default function ServicePage() {
                     <button
                       type="button"
                       onClick={undoService}
-                      disabled={!selectedTable.service.history.length}
+                      disabled={!canUndo || !selectedTable.service.history.length}
                       className="rounded-lg px-3 py-2 text-sm border border-[#E8D4B8] bg-white hover:bg-[#FDF8F2] disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ color: "#6B1F2F" }}
+                      title={!canUndo ? "Not allowed for this role" : undefined}
                     >
                       Undo
                     </button>
@@ -682,20 +787,24 @@ export default function ServicePage() {
                     <button
                       type="button"
                       onClick={advanceService}
-                      className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                      disabled={!canAdvance}
+                      className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ backgroundColor: "#6B1F2F" }}
+                      title={!canAdvance ? "Not allowed for this role" : undefined}
                     >
                       Next
                     </button>
                   </div>
                 </div>
 
-                {/* Entree timing quick view */}
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 text-xs">
                   <TimeChip label="Entree Called" value={fmtTime(entreeTiming?.called)} />
                   <TimeChip label="Entree Ready" value={fmtTime(entreeTiming?.ready)} />
                   <TimeChip label="Entree Served" value={fmtTime(entreeTiming?.served)} />
-                  <TimeChip label="Entree Minutes (Called→Served)" value={`${minsBetween(entreeTiming?.called, entreeTiming?.served) ?? "—"}`} />
+                  <TimeChip
+                    label="Entree Minutes (Called→Served)"
+                    value={`${minsBetween(entreeTiming?.called, entreeTiming?.served) ?? "—"}`}
+                  />
                 </div>
               </div>
 
@@ -750,14 +859,14 @@ export default function ServicePage() {
                 </div>
               </div>
 
-              {/* Guests at table: allergies + protein subs */}
+              {/* Guests at table */}
               <div className="rounded-2xl border border-[#E8D4B8] bg-white p-4 mb-5">
                 <div>
                   <div className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
                     Guests at table
                   </div>
                   <div className="text-[11px] text-[#7B5A45] mt-0.5">
-                    Allergies + protein subs show as badges on the left list (no click needed).
+                    Allergies + protein subs show as badges on the left list.
                   </div>
                 </div>
 
@@ -841,13 +950,10 @@ export default function ServicePage() {
                     ) : null}
 
                     <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedTable.addOns.sparklingWater}
-                        onChange={() => handleAddOnToggle("sparklingWater")}
-                      />
+                      <input type="checkbox" checked={selectedTable.addOns.sparklingWater} onChange={() => handleAddOnToggle("sparklingWater")} />
                       Sparkling water
                     </label>
+
                     <label className="flex items-center gap-2">
                       <input type="checkbox" checked={selectedTable.addOns.dessertWine} onChange={() => handleAddOnToggle("dessertWine")} />
                       Dessert wine
@@ -862,7 +968,9 @@ export default function ServicePage() {
                       <div className="text-sm font-semibold text-[#4A1520]" style={{ fontFamily: "Playfair Display, Georgia, serif" }}>
                         Coffee / Tea service
                       </div>
-                      <div className="text-[11px] text-[#7B5A45] mt-0.5">Optional step between entree and dessert</div>
+                      <div className="text-[11px] text-[#7B5A45] mt-0.5">
+                        Optional step between entree and dessert
+                      </div>
                     </div>
 
                     <label className="flex items-center gap-2 text-sm">
@@ -888,7 +996,11 @@ export default function ServicePage() {
                       <label className="block text-[11px] font-semibold mb-1 text-[#7B5A45]">Coffee / Tea choice</label>
                       <select
                         value={selectedTable.coffeeTea.choice}
-                        onChange={(e) => updateSelected({ coffeeTea: { ...selectedTable.coffeeTea, choice: e.target.value as CoffeeTeaChoice } })}
+                        onChange={(e) =>
+                          updateSelected({
+                            coffeeTea: { ...selectedTable.coffeeTea, choice: e.target.value as CoffeeTeaChoice },
+                          })
+                        }
                         className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
                       >
                         <option value="">Select…</option>
@@ -926,7 +1038,8 @@ export default function ServicePage() {
                     <select
                       value={selectedBottleToAdd}
                       onChange={(e) => setSelectedBottleToAdd(e.target.value)}
-                      className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                      disabled={winesDisabled}
+                      className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40 disabled:opacity-50"
                     >
                       <option value="">Select bottle…</option>
                       {inventoryWines.map((w) => (
@@ -935,21 +1048,47 @@ export default function ServicePage() {
                         </option>
                       ))}
                     </select>
-                    <button type="button" onClick={addBottle} className="rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ backgroundColor: "#6B1F2F" }}>
+
+                    <button
+                      type="button"
+                      onClick={addBottle}
+                      disabled={winesDisabled}
+                      className="rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: "#6B1F2F" }}
+                      title={
+                        !canAddWines
+                          ? "Not allowed for this role"
+                          : wineLockedUntilArrived
+                          ? "Unlocks after Arrived"
+                          : undefined
+                      }
+                    >
                       Add
                     </button>
                   </div>
 
+                  {wineLockedUntilArrived ? (
+                    <div className="mt-2 text-xs text-slate-500">
+                      Wine ordering unlocks after <span className="font-semibold">Arrived</span>.
+                    </div>
+                  ) : null}
+
                   {selectedTable.bottles.length ? (
                     <div className="mt-3 space-y-2">
                       {selectedTable.bottles.map((b, idx) => (
-                        <div key={`${b}-${idx}`} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2" style={{ borderColor: "#F0E0CF" }}>
+                        <div
+                          key={`${b}-${idx}`}
+                          className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2"
+                          style={{ borderColor: "#F0E0CF" }}
+                        >
                           <div className="text-sm text-slate-800">{b}</div>
                           <button
                             type="button"
                             onClick={() => removeBottle(idx)}
-                            className="text-xs px-2 py-1 rounded border hover:bg-slate-50"
+                            disabled={!canRemoveWines}
+                            className="text-xs px-2 py-1 rounded border hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{ borderColor: "#E8D4B8", color: "#6B1F2F" }}
+                            title={!canRemoveWines ? "Not allowed for this role" : undefined}
                           >
                             Remove
                           </button>
@@ -976,7 +1115,8 @@ export default function ServicePage() {
                     <select
                       value={selectedBtgToAdd}
                       onChange={(e) => setSelectedBtgToAdd(e.target.value)}
-                      className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40"
+                      disabled={winesDisabled}
+                      className="w-full rounded-lg border border-[#E0C6AF] bg-[#FDF8F2] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F2F]/40 disabled:opacity-50"
                     >
                       <option value="">Select BTG…</option>
                       {BTG_OPTIONS.map((w) => (
@@ -985,21 +1125,47 @@ export default function ServicePage() {
                         </option>
                       ))}
                     </select>
-                    <button type="button" onClick={addBtg} className="rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ backgroundColor: "#6B1F2F" }}>
+
+                    <button
+                      type="button"
+                      onClick={addBtg}
+                      disabled={winesDisabled}
+                      className="rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: "#6B1F2F" }}
+                      title={
+                        !canAddWines
+                          ? "Not allowed for this role"
+                          : wineLockedUntilArrived
+                          ? "Unlocks after Arrived"
+                          : undefined
+                      }
+                    >
                       Add
                     </button>
                   </div>
 
+                  {wineLockedUntilArrived ? (
+                    <div className="mt-2 text-xs text-slate-500">
+                      Wine ordering unlocks after <span className="font-semibold">Arrived</span>.
+                    </div>
+                  ) : null}
+
                   {selectedTable.btg.length ? (
                     <div className="mt-3 space-y-2">
                       {selectedTable.btg.map((b, idx) => (
-                        <div key={`${b}-${idx}`} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2" style={{ borderColor: "#F0E0CF" }}>
+                        <div
+                          key={`${b}-${idx}`}
+                          className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2"
+                          style={{ borderColor: "#F0E0CF" }}
+                        >
                           <div className="text-sm text-slate-800">{b}</div>
                           <button
                             type="button"
                             onClick={() => removeBtg(idx)}
-                            className="text-xs px-2 py-1 rounded border hover:bg-slate-50"
+                            disabled={!canRemoveWines}
+                            className="text-xs px-2 py-1 rounded border hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{ borderColor: "#E8D4B8", color: "#6B1F2F" }}
+                            title={!canRemoveWines ? "Not allowed for this role" : undefined}
                           >
                             Remove
                           </button>
@@ -1035,7 +1201,7 @@ export default function ServicePage() {
                 </div>
               </div>
 
-              {/* Doneness */}
+              {/* Doneness + steps */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold mb-1 text-[#7B5A45]">Protein doneness</label>
@@ -1059,7 +1225,10 @@ export default function ServicePage() {
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {stepsForSelected.map((s) => (
-                      <span key={s.key} className="text-[11px] px-2 py-1 rounded-full border bg-[#FDF8F2] border-[#E8D4B8] text-[#4A1520]">
+                      <span
+                        key={s.key}
+                        className="text-[11px] px-2 py-1 rounded-full border bg-[#FDF8F2] border-[#E8D4B8] text-[#4A1520]"
+                      >
                         {s.label}
                       </span>
                     ))}

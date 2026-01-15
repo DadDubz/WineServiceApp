@@ -62,7 +62,7 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     username=user.username,
     email=f"{user.username}@example.com",
     hashed_password=hashed_password,
-    role="user",
+    role="server",
     company_id=1
 )
     db.add(new_user)
