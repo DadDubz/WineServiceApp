@@ -1,45 +1,44 @@
-from datetime import datetime
-from enum import Enum
+# backend/app/schemas/service.py
+from datetime import datetime, date
 from typing import List, Optional
-
 from pydantic import BaseModel, Field
 
-
-class TableStatus(str, Enum):
-    OPEN = "OPEN"
-    COMPLETED = "COMPLETED"
-    CANCELED = "CANCELED"
+from app.models.service import TableStatus, WineKind
 
 
-class WineKind(str, Enum):
-    BOTTLE = "BOTTLE"
-    BTG = "BTG"
-
-
-# -------- Tables --------
+# ---------- Tables ----------
 class TableCreate(BaseModel):
     table_number: str = Field(min_length=1)
+    turn: int = 1  # ✅ 1 or 2
     location: Optional[str] = None
-    guest_count: int = 0
+    guest_count: int = Field(ge=0, le=50, default=0)
     notes: Optional[str] = None
 
 
 class TablePatch(BaseModel):
-    table_number: Optional[str] = None
     location: Optional[str] = None
-    guest_count: Optional[int] = None
+    guest_count: Optional[int] = Field(default=None, ge=0, le=50)
     notes: Optional[str] = None
+    # You can include these if you want patching, but I recommend route methods instead:
+    status: Optional[TableStatus] = None
 
 
 class TableListItem(BaseModel):
     id: str
+    company_id: int
+    service_date: date
     table_number: str
+    turn: int
+
     location: Optional[str] = None
     status: TableStatus
-    step_index: int
-    guest_count: int
+
     arrived_at: Optional[datetime] = None
     seated_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    step_index: int
+    guest_count: int
     updated_at: datetime
 
     class Config:
@@ -53,43 +52,24 @@ class TableListResponse(BaseModel):
     total: int
 
 
-# -------- Guests --------
-class GuestCreate(BaseModel):
+class GuestOut(BaseModel):
+    id: str
+    table_id: str
     name: Optional[str] = None
     allergy: Optional[str] = None
     protein_sub: Optional[str] = None
     doneness: Optional[str] = None
     substitutions: Optional[str] = None
     notes: Optional[str] = None
-
-
-class GuestPatch(GuestCreate):
-    pass
-
-
-class GuestOut(GuestCreate):
-    id: str
     updated_at: datetime
 
     class Config:
         from_attributes = True
 
 
-# -------- Wines --------
-class WineEntryCreate(BaseModel):
-    kind: WineKind
-    wine_id: Optional[str] = None
-    label: str = Field(min_length=1)
-    quantity: float = 1.0
-
-
-class WineEntryPatch(BaseModel):
-    label: Optional[str] = None
-    quantity: Optional[float] = None
-
-
 class WineEntryOut(BaseModel):
     id: str
+    table_id: str
     kind: WineKind
     wine_id: Optional[str] = None
     label: str
@@ -100,45 +80,68 @@ class WineEntryOut(BaseModel):
         from_attributes = True
 
 
-# -------- Details --------
-class StepEventOut(BaseModel):
-    id: str
-    event_type: str
-    from_step: Optional[int] = None
-    to_step: Optional[int] = None
-    payload: Optional[str] = None
-    actor_user_id: Optional[int] = None
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 class TableDetail(BaseModel):
     id: str
+    company_id: int
+    service_date: date
     table_number: str
+    turn: int
+
     location: Optional[str] = None
     status: TableStatus
-    step_index: int
-    guest_count: int
-    notes: Optional[str] = None
 
     arrived_at: Optional[datetime] = None
     seated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+
+    step_index: int
+    guest_count: int
+    notes: Optional[str] = None
 
     created_at: datetime
     updated_at: datetime
 
     guests: List[GuestOut] = []
     wines: List[WineEntryOut] = []
-    events: List[StepEventOut] = []
 
     class Config:
         from_attributes = True
 
 
+# ---------- Steps ----------
 class StepAdvanceResponse(BaseModel):
     table_id: str
     step_index: int
     updated_at: datetime
+
+
+# ---------- Guests ----------
+class GuestCreate(BaseModel):
+    name: Optional[str] = ""
+    allergy: Optional[str] = ""
+    protein_sub: Optional[str] = ""
+    doneness: Optional[str] = None
+    substitutions: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class GuestPatch(BaseModel):
+    name: Optional[str] = None
+    allergy: Optional[str] = None
+    protein_sub: Optional[str] = None
+    doneness: Optional[str] = None
+    substitutions: Optional[str] = None
+    notes: Optional[str] = None
+
+
+# ---------- Wines ----------
+class WineEntryCreate(BaseModel):
+    kind: WineKind
+    wine_id: Optional[str] = None
+    label: str = Field(min_length=1)
+    quantity: float = Field(ge=0.01, default=1)
+
+
+class WineEntryPatch(BaseModel):
+    label: Optional[str] = None
+    quantity: Optional[float] = Field(default=None, ge=0.01)

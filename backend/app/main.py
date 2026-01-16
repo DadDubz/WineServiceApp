@@ -19,7 +19,17 @@ app_url = os.environ.get("APP_URL", "")
 frontend_url = app_url if app_url else "http://localhost:5173"
 
 # Allowed origins for CORS - allow all for development/preview
-origins = ["*"]  # Allow all origins for preview environment
+from app.core.config import settings
+...
+origins = settings.cors_origins_list()
+...
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.add_middleware(
     CORSMiddleware,
