@@ -25,6 +25,11 @@ def uuid_str() -> str:
     return str(uuid.uuid4())
 
 
+def utcnow() -> datetime:
+    # Keep consistent timestamps for updated_at, created_at, etc.
+    return datetime.utcnow()
+
+
 class TableStatus(str, Enum):
     OPEN = "OPEN"
     COMPLETED = "COMPLETED"
@@ -87,26 +92,61 @@ class ServiceTable(Base):
 
     notes = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, index=True)
 
-    guests = relationship("ServiceGuest", back_populates="table", cascade="all, delete-orphan")
-    wines = relationship("ServiceTableWine", back_populates="table", cascade="all, delete-orphan")
-    events = relationship("ServiceStepEvent", back_populates="table", cascade="all, delete-orphan")
+    guests = relationship(
+        "ServiceGuest",
+        back_populates="table",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    wines = relationship(
+        "ServiceTableWine",
+        back_populates="table",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    events = relationship(
+        "ServiceStepEvent",
+        back_populates="table",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     __table_args__ = (
         # fast "active list" queries
-        Index("ix_service_tables_company_date_status_updated", "company_id", "service_date", "status", "updated_at"),
+        Index(
+            "ix_service_tables_company_date_status_updated",
+            "company_id",
+            "service_date",
+            "status",
+            "updated_at",
+        ),
         # ✅ enforce table reuse limit per company/day
-        UniqueConstraint("company_id", "service_date", "table_number", "turn", name="uq_table_use_per_day"),
+        UniqueConstraint(
+            "company_id",
+            "service_date",
+            "table_number",
+            "turn",
+            name="uq_table_use_per_day",
+        ),
     )
+
+    def __repr__(self) -> str:
+        return f"<ServiceTable id={self.id} table={self.table_number} turn={self.turn} date={self.service_date} status={self.status}>"
 
 
 class ServiceGuest(Base):
     __tablename__ = "service_guests"
 
     id = Column(String, primary_key=True, default=uuid_str)
-    table_id = Column(String, ForeignKey("service_tables.id", ondelete="CASCADE"), nullable=False, index=True)
+    table_id = Column(
+        String,
+        ForeignKey("service_tables.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     name = Column(String, nullable=True)
     allergy = Column(String, nullable=True)
@@ -116,42 +156,19 @@ class ServiceGuest(Base):
     substitutions = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, index=True)
 
     table = relationship("ServiceTable", back_populates="guests")
+
+    def __repr__(self) -> str:
+        return f"<ServiceGuest id={self.id} table_id={self.table_id}>"
 
 
 class ServiceTableWine(Base):
     __tablename__ = "service_table_wines"
 
     id = Column(String, primary_key=True, default=uuid_str)
-    table_id = Column(String, ForeignKey("service_tables.id", ondelete="CASCADE"), nullable=False, index=True)
-
-    kind = Column(SAEnum(WineKind), nullable=False)
-    wine_id = Column(String, nullable=True)  # optional linkage to inventory later
-    label = Column(String, nullable=False)
-    quantity = Column(Numeric(10, 2), nullable=False, default=1)
-
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
-
-    table = relationship("ServiceTable", back_populates="wines")
-
-
-class ServiceStepEvent(Base):
-    __tablename__ = "service_step_events"
-
-    id = Column(String, primary_key=True, default=uuid_str)
-    table_id = Column(String, ForeignKey("service_tables.id", ondelete="CASCADE"), nullable=False, index=True)
-
-    event_type = Column(SAEnum(StepEventType), nullable=False)
-    from_step = Column(Integer, nullable=True)
-    to_step = Column(Integer, nullable=True)
-
-    payload = Column(Text, nullable=True)  # JSON string
-    actor_user_id = Column(Integer, nullable=True)
-
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-
-    table = relationship("ServiceTable", back_populates="events")
+    table_id = Column(
+        String,
+        ForeignKey("service_tables.id", on
