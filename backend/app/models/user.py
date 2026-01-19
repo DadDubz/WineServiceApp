@@ -1,10 +1,17 @@
 # backend/app/models/user.py
-from datetime import datetime
-
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+import enum
+from sqlalchemy import Column, Integer, String, Enum as SAEnum, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.db import Base
+
+
+class UserRole(str, enum.Enum):
+    expo = "expo"
+    sommelier = "sommelier"
+    manager = "manager"
+    server = "server"
+    admin = "admin"
 
 
 class User(Base):
@@ -12,18 +19,13 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    username = Column(String, unique=True, index=True, nullable=False)
-    email = Column(String, unique=True, index=True, nullable=False)
-
+    username = Column(String, unique=True, nullable=False, index=True)
+    email = Column(String, unique=True, nullable=False, index=True)
     hashed_password = Column(String, nullable=False)
 
-    # Examples: "server", "expo", "sommelier", "manager", "admin"
-    role = Column(String, nullable=False, default="server")
+    role = Column(SAEnum(UserRole), nullable=False, default=UserRole.server)
 
-    # ✅ Make nullable to avoid Alembic failing when existing users have NULL company_id
+    # ✅ make nullable for testing so existing rows don't break migrations
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
-
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     company = relationship("Company", back_populates="users")
