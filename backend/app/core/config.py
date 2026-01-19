@@ -1,19 +1,37 @@
 # backend/app/core/config.py
 from __future__ import annotations
 
+import os
 from typing import List, Optional
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
     """
-    App configuration loaded from environment variables and .env
-
-    - For local dev, create backend/.env with values below.
-    - For production, set env vars in Render/Vercel/etc.
+    Central settings object.
+    Reads from environment variables + optional .env file.
     """
+
+    # --- App ---
+    APP_NAME: str = "WineServiceApp"
+    ENV: str = Field(default="development")  # development | production | test
+    APP_URL: str = Field(default="http://localhost:5173")
+
+    # --- Security / JWT ---
+    SECRET_KEY: str = Field(default="dev-secret-change-me-please")
+    JWT_SECRET: str = Field(default="dev-secret-change-me-please")
+    JWT_ALG: str = Field(default="HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60 * 24)  # 24h
+
+    # --- Database ---
+    # For sqlite, alembic typically wants sqlite:///./app.db
+    DATABASE_URL: str = Field(default="sqlite:///./app.db")
+
+    # --- CORS ---
+    # Allow comma-separated list OR *
+    CORS_ORIGINS: str = Field(default="*")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -21,36 +39,18 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- Core ---
-    ENV: str = Field(default="dev")
-    SECRET_KEY: str = Field(default="dev-secret-change-me-please")
-
-    # --- DB ---
-    DATABASE_URL: str = Field(default="sqlite:///./app.db")
-
-    # --- CORS ---
-    # Use one of these styles:
-    # 1) CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
-    # 2) CORS_ORIGINS="*"   (allow all, dev only)
-    CORS_ORIGINS: str = Field(default="http://localhost:5173,http://127.0.0.1:5173")
-
-    # Optional convenience if you use it elsewhere
-    APP_URL: Optional[str] = Field(default=None)
-
     def cors_origins_list(self) -> List[str]:
         """
-        Returns a list of allowed CORS origins.
+        Return allowed CORS origins as a list.
         Supports:
-          - "*" for allow-all
-          - Comma-separated URLs
+        - "*" (allow all)
+        - "http://a.com,http://b.com"
         """
         raw = (self.CORS_ORIGINS or "").strip()
         if not raw:
-            return ["http://localhost:5173"]
-
+            return ["*"]
         if raw == "*":
             return ["*"]
-
         return [o.strip() for o in raw.split(",") if o.strip()]
 
 
