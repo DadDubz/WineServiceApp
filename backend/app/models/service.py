@@ -26,7 +26,6 @@ def uuid_str() -> str:
 
 
 def utcnow() -> datetime:
-    # Keep consistent timestamps for updated_at, created_at, etc.
     return datetime.utcnow()
 
 
@@ -56,27 +55,14 @@ class StepEventType(str, Enum):
 
 
 class ServiceTable(Base):
-    """
-    Represents ONE "use" of a physical table.
-
-    Reuse rules:
-      - You can reuse the same table_number at most twice per day by using turn=1 or turn=2.
-      - Enforced by unique constraint: (company_id, service_date, table_number, turn)
-    """
     __tablename__ = "service_tables"
 
     id = Column(String, primary_key=True, default=uuid_str)
 
-    # multi-company isolation
     company_id = Column(Integer, nullable=False, index=True)
-
-    # 1-day service grouping
     service_date = Column(Date, nullable=False, index=True)
 
-    # physical table label: "T1", "T2", etc
     table_number = Column(String, nullable=False, index=True)
-
-    # ✅ reuse a table twice max: 1 or 2
     turn = Column(Integer, nullable=False, default=1)
 
     location = Column(String, nullable=True)
@@ -115,7 +101,6 @@ class ServiceTable(Base):
     )
 
     __table_args__ = (
-        # fast "active list" queries
         Index(
             "ix_service_tables_company_date_status_updated",
             "company_id",
@@ -123,7 +108,6 @@ class ServiceTable(Base):
             "status",
             "updated_at",
         ),
-        # ✅ enforce table reuse limit per company/day
         UniqueConstraint(
             "company_id",
             "service_date",
@@ -132,9 +116,6 @@ class ServiceTable(Base):
             name="uq_table_use_per_day",
         ),
     )
-
-    def __repr__(self) -> str:
-        return f"<ServiceTable id={self.id} table={self.table_number} turn={self.turn} date={self.service_date} status={self.status}>"
 
 
 class ServiceGuest(Base):
@@ -161,9 +142,6 @@ class ServiceGuest(Base):
 
     table = relationship("ServiceTable", back_populates="guests")
 
-    def __repr__(self) -> str:
-        return f"<ServiceGuest id={self.id} table_id={self.table_id}>"
-
 
 class ServiceTableWine(Base):
     __tablename__ = "service_table_wines"
@@ -171,4 +149,40 @@ class ServiceTableWine(Base):
     id = Column(String, primary_key=True, default=uuid_str)
     table_id = Column(
         String,
-        ForeignKey("service_tables.id", on
+        ForeignKey("service_tables.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    kind = Column(SAEnum(WineKind), nullable=False)
+    wine_id = Column(String, nullable=True)
+    label = Column(String, nullable=False)
+    quantity = Column(Numeric(10, 2), nullable=False, default=1)
+
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, index=True)
+
+    table = relationship("ServiceTable", back_populates="wines")
+
+
+class ServiceStepEvent(Base):
+    __tablename__ = "service_step_events"
+
+    id = Column(String, primary_key=True, default=uuid_str)
+    table_id = Column(
+        String,
+        ForeignKey("service_tables.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    event_type = Column(SAEnum(StepEventType), nullable=False)
+    from_step = Column(Integer, nullable=True)
+    to_step = Column(Integer, nullable=True)
+
+    payload = Column(Text, nullable=True)
+    actor_user_id = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+
+    table = relationship("ServiceTable", back_populates="events")

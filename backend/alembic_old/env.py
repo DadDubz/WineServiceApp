@@ -18,7 +18,8 @@ if BASE_DIR not in sys.path:
 # Alembic Config object
 config = context.config
 
-# Configure Python logging (safe even if ini is missing sections)
+# Configure Python logging
+# If your alembic.ini logging section is broken, skip it.
 try:
     if config.config_file_name is not None:
         fileConfig(config.config_file_name)
@@ -31,20 +32,17 @@ except Exception:
 from app.core.config import settings  # noqa: E402
 from app.db import Base  # noqa: E402
 
-# IMPORTANT: import models so Base.metadata is populated for autogenerate
+# IMPORTANT: import models so Base.metadata is populated
+# Add every model module you want Alembic to "see"
 from app.models.user import User  # noqa: F401,E402
 from app.models.company import Company  # noqa: F401,E402
-from app.models.service import (  # noqa: F401,E402
-    ServiceTable,
-    ServiceGuest,
-    ServiceTableWine,
-    ServiceStepEvent,
-)
+from app.models.service import ServiceTable, ServiceGuest, ServiceTableWine, ServiceStepEvent  # noqa: F401,E402
 
 target_metadata = Base.metadata
 
 
 def get_url() -> str:
+    # Use DATABASE_URL from your settings / .env
     return settings.DATABASE_URL
 
 
@@ -75,14 +73,11 @@ def run_migrations_online() -> None:
         future=True,
     )
 
-    with connectable.connect() as conn:
-        is_sqlite = conn.dialect.name == "sqlite"
-
+    with connectable.connect() as connection:
         context.configure(
-            connection=conn,
+            connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
-            render_as_batch=is_sqlite,  # ✅ critical for SQLite ALTER limitations
         )
 
         with context.begin_transaction():

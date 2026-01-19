@@ -1,6 +1,6 @@
 # backend/app/crud/service.py
 import json
-from datetime import datetime, date
+from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -17,73 +17,57 @@ from app.models.service import (
 )
 
 
-def utcnow() -> datetime:
-    return datetime.utcnow()
-
-
-def today() -> date:
-    # For now: simple UTC date. If you want local restaurant time later,
-    # we can switch to America/Chicago using zoneinfo.
-    return date.today()
+class TableUseConflictError(Exception):
+    """Raised when (company_id, service_date, table_number, turn) violates unique constraint."""
 
 
 def touch(table: ServiceTable):
-    table.updated_at = utcnow()
+    table.updated_at = datetime.utcnow()
 
 
 def create_table(
     db: Session,
-    company_id: int | None,
+    company_id: int,
+    service_date: date,
     table_number: str,
-    location: str | None,
+    turn: int,
+    location: Optional[str],
     guest_count: int,
-    notes: str | None,
-    turn: int = 1,
-    service_date: Optional[date] = None,
+    notes: Optional[str],
 ):
-    """
-    Creates ONE 'use' of a physical table for a given service date.
-    A physical table can be reused at most twice (turn=1 or 2).
-    """
-    if turn not in (1, 2):
-        raise ValueError("turn must be 1 or 2")
-
-    sd = service_date or today()
-
     t = ServiceTable(
         company_id=company_id,
-        service_date=sd,
+        service_date=service_date,
         table_number=table_number,
         turn=turn,
         location=location,
         guest_count=guest_count,
         notes=notes,
-        status=TableStatus.OPEN,
     )
-    db.add(t)
-    db.flush()
-    touch(t)
 
+    db.add(t)
+    try:
+        db.flush()
+    except IntegrityError as e:
+        db.rollback()
+        raise TableUseConflictError(
+            f"Table {table_number} turn {turn} already exists for {service_date}."
+        ) from e
+
+    touch(t)
     db.add(
         ServiceStepEvent(
             table_id=t.id,
             event_type=StepEventType.UPDATE,
-            payload=json.dumps({"created": True, "service_date": sd.isoformat(), "turn": turn}),
+            payload=json.dumps({"created": True}),
         )
     )
-
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        # Uniqueness constraint: company_id, service_date, table_number, turn
-        raise ValueError("That table number + turn is already in use for this service date.")
-
+    db.commit()
     db.refresh(t)
     return t
 
 
-def get_table(db: Session, table_id: str, company_id: int | None = None) -> ServiceTable | None:
+def get_table(db: Session, table_id: str, company_id: Optional[int] = None) -> Optional[ServiceTable]:
     q = db.query(ServiceTable).filter(ServiceTable.id == table_id)
     if company_id is not None:
         q = q.filter(ServiceTable.company_id == company_id)
@@ -92,26 +76,15 @@ def get_table(db: Session, table_id: str, company_id: int | None = None) -> Serv
 
 def list_tables(
     db: Session,
-    company_id: int | None,
+    company_id: Optional[int],
     status: TableStatus,
     page: int,
     limit: int,
-    updated_since: datetime | None,
-    service_date: Optional[date] = None,
+    updated_since: Optional[datetime],
 ):
-    """
-    Lists tables for the current service day by default.
-    Minimal payload should be handled by schema/response model, not here.
-    """
-    sd = service_date or today()
-
     q = db.query(ServiceTable).filter(ServiceTable.status == status)
-
     if company_id is not None:
         q = q.filter(ServiceTable.company_id == company_id)
-
-    q = q.filter(ServiceTable.service_date == sd)
-
     if updated_since:
         q = q.filter(ServiceTable.updated_at >= updated_since)
 
@@ -125,16 +98,12 @@ def list_tables(
     return total, items
 
 
-def patch_table(db: Session, table: ServiceTable, data: dict, actor_user_id: int | None):
-    # Prevent changing service_date/table_number/turn unless you explicitly want it
-    protected = {"service_date", "table_number", "turn", "company_id", "id"}
+def patch_table(db: Session, table: ServiceTable, data: dict, actor_user_id: Optional[int]):
+    # If patch includes fields that affect uniqueness, catch conflict
     for k, v in data.items():
-        if k in protected:
-            continue
         setattr(table, k, v)
 
     touch(table)
-
     db.add(
         ServiceStepEvent(
             table_id=table.id,
@@ -143,14 +112,22 @@ def patch_table(db: Session, table: ServiceTable, data: dict, actor_user_id: int
             actor_user_id=actor_user_id,
         )
     )
-    db.commit()
+
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise TableUseConflictError(
+            "That table_number/turn/service_date is already used for this company."
+        ) from e
+
     db.refresh(table)
     return table
 
 
-def mark_arrived(db: Session, table: ServiceTable, actor_user_id: int | None):
+def mark_arrived(db: Session, table: ServiceTable, actor_user_id: Optional[int]):
     if not table.arrived_at:
-        table.arrived_at = utcnow()
+        table.arrived_at = datetime.utcnow()
     touch(table)
     db.add(ServiceStepEvent(table_id=table.id, event_type=StepEventType.ARRIVE, actor_user_id=actor_user_id))
     db.commit()
@@ -158,9 +135,9 @@ def mark_arrived(db: Session, table: ServiceTable, actor_user_id: int | None):
     return table
 
 
-def mark_seated(db: Session, table: ServiceTable, actor_user_id: int | None):
+def mark_seated(db: Session, table: ServiceTable, actor_user_id: Optional[int]):
     if not table.seated_at:
-        table.seated_at = utcnow()
+        table.seated_at = datetime.utcnow()
     touch(table)
     db.add(ServiceStepEvent(table_id=table.id, event_type=StepEventType.SEAT, actor_user_id=actor_user_id))
     db.commit()
@@ -168,10 +145,10 @@ def mark_seated(db: Session, table: ServiceTable, actor_user_id: int | None):
     return table
 
 
-def complete_table(db: Session, table: ServiceTable, actor_user_id: int | None):
+def complete_table(db: Session, table: ServiceTable, actor_user_id: Optional[int]):
     table.status = TableStatus.COMPLETED
     if not table.completed_at:
-        table.completed_at = utcnow()
+        table.completed_at = datetime.utcnow()
     touch(table)
     db.add(ServiceStepEvent(table_id=table.id, event_type=StepEventType.COMPLETE, actor_user_id=actor_user_id))
     db.commit()
@@ -179,11 +156,10 @@ def complete_table(db: Session, table: ServiceTable, actor_user_id: int | None):
     return table
 
 
-def next_step(db: Session, table: ServiceTable, actor_user_id: int | None):
+def next_step(db: Session, table: ServiceTable, actor_user_id: Optional[int]):
     from_step = table.step_index
     table.step_index = from_step + 1
     touch(table)
-
     db.add(
         ServiceStepEvent(
             table_id=table.id,
@@ -198,7 +174,7 @@ def next_step(db: Session, table: ServiceTable, actor_user_id: int | None):
     return table
 
 
-def undo_step(db: Session, table: ServiceTable, actor_user_id: int | None):
+def undo_step(db: Session, table: ServiceTable, actor_user_id: Optional[int]):
     last = (
         db.query(ServiceStepEvent)
         .filter(ServiceStepEvent.table_id == table.id)
@@ -237,7 +213,7 @@ def ensure_wines_unlocked(table: ServiceTable) -> bool:
     return table.arrived_at is not None
 
 
-def add_guest(db: Session, table: ServiceTable, guest_data: dict, actor_user_id: int | None):
+def add_guest(db: Session, table: ServiceTable, guest_data: dict, actor_user_id: Optional[int]):
     g = ServiceGuest(table_id=table.id, **guest_data)
     db.add(g)
     db.flush()
@@ -256,10 +232,10 @@ def add_guest(db: Session, table: ServiceTable, guest_data: dict, actor_user_id:
     return table
 
 
-def update_guest(db: Session, table: ServiceTable, guest: ServiceGuest, guest_data: dict, actor_user_id: int | None):
+def update_guest(db: Session, table: ServiceTable, guest: ServiceGuest, guest_data: dict, actor_user_id: Optional[int]):
     for k, v in guest_data.items():
         setattr(guest, k, v)
-    guest.updated_at = utcnow()
+    guest.updated_at = datetime.utcnow()
     touch(table)
 
     db.add(
@@ -275,7 +251,7 @@ def update_guest(db: Session, table: ServiceTable, guest: ServiceGuest, guest_da
     return table
 
 
-def remove_guest(db: Session, table: ServiceTable, guest: ServiceGuest, actor_user_id: int | None):
+def remove_guest(db: Session, table: ServiceTable, guest: ServiceGuest, actor_user_id: Optional[int]):
     gid = guest.id
     db.delete(guest)
     touch(table)
@@ -293,7 +269,7 @@ def remove_guest(db: Session, table: ServiceTable, guest: ServiceGuest, actor_us
     return table
 
 
-def add_wine(db: Session, table: ServiceTable, wine_data: dict, actor_user_id: int | None):
+def add_wine(db: Session, table: ServiceTable, wine_data: dict, actor_user_id: Optional[int]):
     w = ServiceTableWine(table_id=table.id, **wine_data)
     db.add(w)
     db.flush()
@@ -312,10 +288,10 @@ def add_wine(db: Session, table: ServiceTable, wine_data: dict, actor_user_id: i
     return table
 
 
-def update_wine(db: Session, table: ServiceTable, wine: ServiceTableWine, wine_data: dict, actor_user_id: int | None):
+def update_wine(db: Session, table: ServiceTable, wine: ServiceTableWine, wine_data: dict, actor_user_id: Optional[int]):
     for k, v in wine_data.items():
         setattr(wine, k, v)
-    wine.updated_at = utcnow()
+    wine.updated_at = datetime.utcnow()
     touch(table)
 
     db.add(
@@ -331,7 +307,7 @@ def update_wine(db: Session, table: ServiceTable, wine: ServiceTableWine, wine_d
     return table
 
 
-def remove_wine(db: Session, table: ServiceTable, wine: ServiceTableWine, actor_user_id: int | None):
+def remove_wine(db: Session, table: ServiceTable, wine: ServiceTableWine, actor_user_id: Optional[int]):
     payload = {
         "wine_entry": {
             "id": wine.id,

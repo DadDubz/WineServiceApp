@@ -25,12 +25,23 @@ from app.crud import service as crud
 
 router = APIRouter(tags=["Service"])
 
+
 # Role policy (tune)
 CAN_VIEW = ("server", "expo", "sommelier", "manager")
 CAN_TABLE_EDIT = ("expo", "sommelier", "manager")
 CAN_STEPS = ("expo", "sommelier", "manager")
 CAN_WINES = ("sommelier", "manager")
 CAN_GUESTS = ("server", "expo", "sommelier", "manager")
+
+
+def require_company_id(current_user: User) -> int:
+    """
+    ✅ Option A (best): service data must always be tied to a company.
+    Users without company_id can't use service endpoints.
+    """
+    if current_user.company_id is None:
+        raise HTTPException(status_code=403, detail="User is not assigned to a company")
+    return int(current_user.company_id)
 
 
 def parse_iso_dt(updated_since: Optional[str]) -> Optional[datetime]:
@@ -40,17 +51,6 @@ def parse_iso_dt(updated_since: Optional[str]) -> Optional[datetime]:
         return datetime.fromisoformat(updated_since)
     except Exception:
         raise HTTPException(status_code=400, detail="updated_since must be ISO datetime")
-
-
-def validate_turn(turn: Optional[int]) -> int:
-    """
-    Supports "reuse table twice max" via turn=1 or 2.
-    If not provided -> defaults to 1.
-    """
-    t = int(turn or 1)
-    if t not in (1, 2):
-        raise HTTPException(status_code=400, detail="turn must be 1 or 2")
-    return t
 
 
 @router.get(
@@ -66,15 +66,18 @@ def list_tables(
     limit: int = Query(25, ge=1, le=100),
     updated_since: Optional[str] = Query(None),
 ):
+    company_id = require_company_id(current_user)
     dt = parse_iso_dt(updated_since)
+
     total, items = crud.list_tables(
         db,
-        company_id=current_user.company_id,
+        company_id=company_id,
         status=status,
         page=page,
         limit=limit,
         updated_since=dt,
     )
+
     return TableListResponse(
         items=[TableListItem.model_validate(t) for t in items],
         page=page,
@@ -93,21 +96,23 @@ def create_table(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # ✅ NEW: validate turn
-    turn = validate_turn(getattr(payload, "turn", None))
+    company_id = require_company_id(current_user)
 
-    # Your CRUD can accept "turn" now.
-    # If you haven't added it yet, update crud.create_table signature to include turn.
-    t = crud.create_table(
-        db,
-        company_id=current_user.company_id,
-        table_number=payload.table_number,
-        location=payload.location,
-        guest_count=payload.guest_count,
-        notes=payload.notes,
-        turn=turn,  # ✅
-    )
-    t = crud.get_table(db, t.id, company_id=current_user.company_id)
+    try:
+        t = crud.create_table(
+            db,
+            company_id=company_id,
+            service_date=payload.service_date,
+            table_number=payload.table_number,
+            turn=payload.turn,
+            location=payload.location,
+            guest_count=payload.guest_count,
+            notes=payload.notes,
+        )
+    except crud.TableUseConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    t = crud.get_table(db, t.id, company_id=company_id)
     return t
 
 
@@ -121,7 +126,9 @@ def get_table_detail(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    t = crud.get_table(db, table_id, company_id=current_user.company_id)
+    company_id = require_company_id(current_user)
+
+    t = crud.get_table(db, table_id, company_id=company_id)
     if not t:
         raise HTTPException(status_code=404, detail="Table not found")
     return t
@@ -138,16 +145,18 @@ def patch_table(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    t = crud.get_table(db, table_id, company_id=current_user.company_id)
+    company_id = require_company_id(current_user)
+
+    t = crud.get_table(db, table_id, company_id=company_id)
     if not t:
         raise HTTPException(status_code=404, detail="Table not found")
+
     data = payload.model_dump(exclude_unset=True)
 
-    # ✅ protect turn changes if you want:
-    if "turn" in data:
-        data["turn"] = validate_turn(data["turn"])
-
-    return crud.patch_table(db, t, data, actor_user_id=current_user.id)
+    try:
+        return crud.patch_table(db, t, data, actor_user_id=current_user.id)
+    except crud.TableUseConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
 
 @router.post(
@@ -160,7 +169,9 @@ def arrive(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    t = crud.get_table(db, table_id, company_id=current_user.company_id)
+    company_id = require_company_id(current_user)
+
+    t = crud.get_table(db, table_id, company_id=company_id)
     if not t:
         raise HTTPException(status_code=404, detail="Table not found")
     return crud.mark_arrived(db, t, actor_user_id=current_user.id)
@@ -176,7 +187,9 @@ def seat(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    t = crud.get_table(db, table_id, company_id=current_user.company_id)
+    company_id = require_company_id(current_user)
+
+    t = crud.get_table(db, table_id, company_id=company_id)
     if not t:
         raise HTTPException(status_code=404, detail="Table not found")
     return crud.mark_seated(db, t, actor_user_id=current_user.id)
@@ -192,7 +205,9 @@ def complete(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    t = crud.get_table(db, table_id, company_id=current_user.company_id)
+    company_id = require_company_id(current_user)
+
+    t = crud.get_table(db, table_id, company_id=company_id)
     if not t:
         raise HTTPException(status_code=404, detail="Table not found")
     return crud.complete_table(db, t, actor_user_id=current_user.id)
@@ -208,9 +223,12 @@ def next_step(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    t = crud.get_table(db, table_id, company_id=current_user.company_id)
+    company_id = require_company_id(current_user)
+
+    t = crud.get_table(db, table_id, company_id=company_id)
     if not t:
         raise HTTPException(status_code=404, detail="Table not found")
+
     t = crud.next_step(db, t, actor_user_id=current_user.id)
     return StepAdvanceResponse(table_id=t.id, step_index=t.step_index, updated_at=t.updated_at)
 
@@ -225,9 +243,12 @@ def undo_step(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    t = crud.get_table(db, table_id, company_id=current_user.company_id)
+    company_id = require_company_id(current_user)
+
+    t = crud.get_table(db, table_id, company_id=company_id)
     if not t:
         raise HTTPException(status_code=404, detail="Table not found")
+
     t = crud.undo_step(db, t, actor_user_id=current_user.id)
     return StepAdvanceResponse(table_id=t.id, step_index=t.step_index, updated_at=t.updated_at)
 
@@ -243,9 +264,12 @@ def add_guest(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    t = crud.get_table(db, table_id, company_id=current_user.company_id)
+    company_id = require_company_id(current_user)
+
+    t = crud.get_table(db, table_id, company_id=company_id)
     if not t:
         raise HTTPException(status_code=404, detail="Table not found")
+
     return crud.add_guest(db, t, payload.model_dump(exclude_unset=True), actor_user_id=current_user.id)
 
 
@@ -261,7 +285,9 @@ def patch_guest(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    t = crud.get_table(db, table_id, company_id=current_user.company_id)
+    company_id = require_company_id(current_user)
+
+    t = crud.get_table(db, table_id, company_id=company_id)
     if not t:
         raise HTTPException(status_code=404, detail="Table not found")
 
@@ -287,7 +313,9 @@ def delete_guest(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    t = crud.get_table(db, table_id, company_id=current_user.company_id)
+    company_id = require_company_id(current_user)
+
+    t = crud.get_table(db, table_id, company_id=company_id)
     if not t:
         raise HTTPException(status_code=404, detail="Table not found")
 
@@ -313,7 +341,9 @@ def add_wine(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    t = crud.get_table(db, table_id, company_id=current_user.company_id)
+    company_id = require_company_id(current_user)
+
+    t = crud.get_table(db, table_id, company_id=company_id)
     if not t:
         raise HTTPException(status_code=404, detail="Table not found")
 
@@ -335,7 +365,9 @@ def patch_wine(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    t = crud.get_table(db, table_id, company_id=current_user.company_id)
+    company_id = require_company_id(current_user)
+
+    t = crud.get_table(db, table_id, company_id=company_id)
     if not t:
         raise HTTPException(status_code=404, detail="Table not found")
 
@@ -364,7 +396,9 @@ def delete_wine(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    t = crud.get_table(db, table_id, company_id=current_user.company_id)
+    company_id = require_company_id(current_user)
+
+    t = crud.get_table(db, table_id, company_id=company_id)
     if not t:
         raise HTTPException(status_code=404, detail="Table not found")
 
