@@ -25,7 +25,6 @@ from app.crud import service as crud
 
 router = APIRouter(tags=["Service"])
 
-
 # Role policy (tune)
 CAN_VIEW = ("server", "expo", "sommelier", "manager")
 CAN_TABLE_EDIT = ("expo", "sommelier", "manager")
@@ -36,7 +35,7 @@ CAN_GUESTS = ("server", "expo", "sommelier", "manager")
 
 def require_company_id(current_user: User) -> int:
     """
-    ✅ Option A (best): service data must always be tied to a company.
+    ✅ Best option: service data must always be tied to a company.
     Users without company_id can't use service endpoints.
     """
     if current_user.company_id is None:
@@ -99,16 +98,18 @@ def create_table(
     company_id = require_company_id(current_user)
 
     try:
+        # ✅ 1-day mode: CRUD sets service_date = date.today()
         t = crud.create_table(
             db,
             company_id=company_id,
-            service_date=payload.service_date,
             table_number=payload.table_number,
             turn=payload.turn,
             location=payload.location,
             guest_count=payload.guest_count,
             notes=payload.notes,
         )
+    except crud.InvalidTurnError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except crud.TableUseConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
 

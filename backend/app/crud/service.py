@@ -21,6 +21,10 @@ class TableUseConflictError(Exception):
     """Raised when (company_id, service_date, table_number, turn) violates unique constraint."""
 
 
+class InvalidTurnError(Exception):
+    """Raised when turn is not 1 or 2."""
+
+
 def touch(table: ServiceTable):
     table.updated_at = datetime.utcnow()
 
@@ -28,13 +32,19 @@ def touch(table: ServiceTable):
 def create_table(
     db: Session,
     company_id: int,
-    service_date: date,
     table_number: str,
     turn: int,
     location: Optional[str],
     guest_count: int,
     notes: Optional[str],
 ):
+    # ✅ Best option for testing: always 1-day service = "today"
+    service_date = date.today()
+
+    # ✅ enforce reuse max twice
+    if turn not in (1, 2):
+        raise InvalidTurnError("turn must be 1 or 2")
+
     t = ServiceTable(
         company_id=company_id,
         service_date=service_date,
@@ -59,7 +69,7 @@ def create_table(
         ServiceStepEvent(
             table_id=t.id,
             event_type=StepEventType.UPDATE,
-            payload=json.dumps({"created": True}),
+            payload=json.dumps({"created": True, "service_date": service_date.isoformat()}),
         )
     )
     db.commit()
@@ -99,7 +109,6 @@ def list_tables(
 
 
 def patch_table(db: Session, table: ServiceTable, data: dict, actor_user_id: Optional[int]):
-    # If patch includes fields that affect uniqueness, catch conflict
     for k, v in data.items():
         setattr(table, k, v)
 
